@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"/>
   <title>Portal Transaksi Proyek</title>
   <link rel="stylesheet" href="style.css"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -206,16 +206,26 @@
     </div>
   </div>
 
-  <!-- ===== RESULT POPUP (SUCCESS/ERROR) ===== -->
+  <!-- ===== RESULT POPUP ===== -->
   <div class="overlay-pop" id="resultPop" aria-hidden="true">
     <div class="pop-card" id="resultCard">
-      <!-- Icon animasi akan di-inject via JS -->
       <div id="resultIcon"></div>
       <h4 id="resultTitle">Selesai</h4>
       <p id="resultMsg">Data anda telah terinput.</p>
       <div class="result-actions">
         <button type="button" class="btn-outline" id="btnKeluar">Keluar</button>
         <button type="button" class="submit-btn" id="btnInputKembali">Input Kembali</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PICKER POPUP (untuk semua dropdown) ===== -->
+  <div class="overlay-pop" id="pickerPop" aria-hidden="true">
+    <div class="pop-card picker-card">
+      <h4 id="pickerTitle">Pilih Opsi</h4>
+      <div id="pickerList" class="picker-list"></div>
+      <div class="picker-actions">
+        <button type="button" class="btn-outline" id="pickerCancel">Batal</button>
       </div>
     </div>
   </div>

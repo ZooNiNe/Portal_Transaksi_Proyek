@@ -1,7 +1,10 @@
 // URL Web App GAS (deployment: Anyone with the link)
 const scriptURL = 'https://script.google.com/macros/s/AKfycby5M6p9T7uo51PCCatCbVGa14yyqFlyD5YrIt1Zj0eeGcY6XJj5k-IWFb6Qu7VtxhCHaw/exec';
 
-/* ====== Elemen langkah ====== */
+// Fallback keluar jika window.close diblokir
+const EXIT_FALLBACK_URL = 'about:blank';
+
+/* ===== Elemen langkah ===== */
 const step1 = document.getElementById('step1');
 const step2 = document.getElementById('step2');
 const step3 = document.getElementById('step3');
@@ -24,11 +27,11 @@ const statusSel = document.getElementById('status');
 document.getElementById('backTo1').addEventListener('click', (e)=>{e.preventDefault(); go(1);});
 document.getElementById('toStep3').addEventListener('click', (e)=>{
   e.preventDefault();
-  if (!tanggal.value) return quickPop('Isi Tanggal.', 'error');
-  if (!proyek.value)  return quickPop('Pilih Proyek.', 'error');
-  if (!uraian.value)  return quickPop('Isi Uraian.', 'error');
-  if (!nominal.value) return quickPop('Isi Nominal.', 'error');
-  if (!statusSel.value) return quickPop('Pilih Status.', 'error');
+  if (!tanggal.value) return quickPop('Isi Tanggal.');
+  if (!proyek.value)  return quickPop('Pilih Proyek.');
+  if (!uraian.value)  return quickPop('Isi Uraian.');
+  if (!nominal.value) return quickPop('Isi Nominal.');
+  if (!statusSel.value) return quickPop('Pilih Status.');
   prepareUploadSection(); go(3);
 });
 
@@ -42,7 +45,7 @@ kreditor.addEventListener('change', ()=>{
 const toIDR = v => (v||'').toString().replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 nominal.addEventListener('input', ()=>{ nominal.value = toIDR(nominal.value); });
 
-/* Step3 (upload) */
+/* Step3 */
 const wrapBon = document.getElementById('wrapBon');
 const wrapSJ  = document.getElementById('wrapSJ');
 const wrapUmum= document.getElementById('wrapBuktiUmum');
@@ -99,9 +102,9 @@ function prepareUploadSection(){
   wrapUmum.classList.toggle('hidden', isMaterialPengeluaran);
 }
 
-/* ===== Pop mini (untuk validasi singkat) ===== */
-function quickPop(message, type='error'){
-  showResult('error', 'Validasi Gagal', message, {onlyDismiss:true});
+/* ===== Pop hasil (pakai modal hasil) ===== */
+function quickPop(message){
+  showResult('error','Validasi Gagal', message, {onlyDismiss:true});
   return false;
 }
 
@@ -188,13 +191,13 @@ const resultMsg  = document.getElementById('resultMsg');
 const btnKeluar  = document.getElementById('btnKeluar');
 const btnInputKembali = document.getElementById('btnInputKembali');
 
-btnKeluar.addEventListener('click', ()=> resultPop.classList.remove('show'));
+btnKeluar.addEventListener('click', exitApp);
 btnInputKembali.addEventListener('click', ()=>{
   resultPop.classList.remove('show');
   // reset & kembali ke step1
   ['buktiBon','buktiSJ','buktiUmum'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   [tanggal,uraian,nominal].forEach(el=>el.value='');
-  kreditor.value='Toko Bangunan A'; kreditorLain.value=''; kreditorLain.classList.add('hidden');
+  kreditor.value='CV Alam Berkah Abadi'; kreditorLain.value=''; kreditorLain.classList.add('hidden');
   statusSel.value='Sudah Dibayar';
   step3.classList.add('hidden'); step2.classList.add('hidden'); step1.classList.remove('hidden');
   window.scrollTo({top:0,behavior:'smooth'});
@@ -203,7 +206,6 @@ btnInputKembali.addEventListener('click', ()=>{
 function showLoading(on=true){ loadingPop.classList.toggle('show', on); }
 
 function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
-  // icon animasi
   if (type==='success'){
     resultIcon.innerHTML =
       `<div class="icon-wrap success" aria-hidden="true">
@@ -220,10 +222,19 @@ function showResult(type='success', title='Selesai', message='Data anda telah te
   }
   resultTitle.textContent = title || (type==='success' ? 'Selesai' : 'Terjadi Kesalahan');
   resultMsg.textContent   = message || (type==='success' ? 'Data anda telah terinput.' : 'Silakan coba lagi.');
-  // opsi: hanya tombol keluar (untuk validasi cepat)
-  const onlyDismiss = !!opts.onlyDismiss;
-  btnInputKembali.style.display = onlyDismiss ? 'none' : '';
+  btnInputKembali.style.display = opts.onlyDismiss ? 'none' : '';
   resultPop.classList.add('show');
+}
+
+/* Keluar web */
+function exitApp(){
+  window.open('', '_self'); window.close();
+  setTimeout(()=>{
+    if (document.visibilityState !== 'hidden'){
+      if (history.length > 1){ history.go(-history.length); }
+      else { location.replace(EXIT_FALLBACK_URL); }
+    }
+  }, 120);
 }
 
 /* ===== Kirim ke GAS ===== */
@@ -302,7 +313,38 @@ function sendData(){
     });
 }
 
-/* ===== Custom dropdown (NiceSelect minimal) ===== */
+/* ===== Picker modal untuk semua dropdown ===== */
+const pickerPop = document.getElementById('pickerPop');
+const pickerTitle = document.getElementById('pickerTitle');
+const pickerList  = document.getElementById('pickerList');
+const pickerCancel= document.getElementById('pickerCancel');
+
+let currentPicker = null; // {select, btn}
+
+pickerCancel.addEventListener('click', ()=> pickerPop.classList.remove('show'));
+
+function openPicker(selectEl, btn){
+  currentPicker = {select:selectEl, btn};
+  pickerTitle.textContent = btn.parentElement.querySelector('label')?.textContent || 'Pilih Opsi';
+  pickerList.innerHTML = '';
+  [...selectEl.options].forEach((opt, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'picker-option' + (opt.selected ? ' selected':'') + (opt.disabled ? ' disabled':'');
+    div.textContent = opt.text;
+    if (!opt.disabled){
+      div.addEventListener('click', ()=>{
+        selectEl.selectedIndex = idx;
+        btn.textContent = opt.text;
+        selectEl.dispatchEvent(new Event('change',{bubbles:true}));
+        pickerPop.classList.remove('show');
+      });
+    }
+    pickerList.appendChild(div);
+  });
+  pickerPop.classList.add('show');
+}
+
+/* ===== Custom trigger (tanpa dropdown di bawah) ===== */
 function initNiceSelects(){
   document.querySelectorAll('select[data-nice]').forEach((sel)=>{
     if (sel.dataset.enhanced) return;
@@ -316,52 +358,13 @@ function initNiceSelects(){
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'nice-select';
-    btn.setAttribute('aria-haspopup','listbox');
+    btn.setAttribute('aria-haspopup','dialog');
     btn.textContent = sel.options[sel.selectedIndex]?.text || '';
     wrap.appendChild(btn);
 
-    const list = document.createElement('div');
-    list.className = 'nice-list';
-    list.setAttribute('role','listbox');
-    wrap.appendChild(list);
+    btn.addEventListener('click', ()=> openPicker(sel, btn));
 
-    function rebuild(){
-      list.innerHTML = '';
-      [...sel.options].forEach((opt, idx)=>{
-        const item = document.createElement('div');
-        item.className = 'nice-option' + (opt.disabled ? ' disabled':'') + (opt.selected ? ' selected':'');
-        item.setAttribute('role','option');
-        item.dataset.value = opt.value;
-        item.textContent = opt.text;
-        if (!opt.disabled){
-          item.addEventListener('click', ()=>{
-            sel.selectedIndex = idx;
-            btn.textContent = opt.text;
-            list.querySelectorAll('.nice-option').forEach(o=>o.classList.remove('selected'));
-            item.classList.add('selected');
-            sel.dispatchEvent(new Event('change',{bubbles:true}));
-            wrap.classList.remove('open');
-          });
-        }
-        list.appendChild(item);
-      });
-    }
-    rebuild();
-
-    btn.addEventListener('click', ()=>{
-      const opened = document.querySelector('.nice-wrap.open');
-      if (opened && opened!==wrap) opened.classList.remove('open');
-      wrap.classList.toggle('open');
-    });
-    document.addEventListener('click', (e)=>{ if(!wrap.contains(e.target)) wrap.classList.remove('open'); });
-    window.addEventListener('scroll', ()=> wrap.classList.remove('open'), {passive:true});
-
-    sel.addEventListener('change', ()=>{
-      btn.textContent = sel.options[sel.selectedIndex]?.text || '';
-      rebuild();
-    });
-
-    // hide select asli
+    // sembunyikan select asli
     sel.style.position='absolute'; sel.style.opacity='0'; sel.style.pointerEvents='none'; sel.style.width='0'; sel.style.height='0';
   });
 }
