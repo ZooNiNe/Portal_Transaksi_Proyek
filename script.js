@@ -35,7 +35,7 @@ document.getElementById('toStep3').addEventListener('click', (e)=>{
 
 /* Kreditor "Lainnya" */
 kreditor.addEventListener('change', ()=>{
-  if (kreditor.value === '__OTHER__'){ kreditorLain.classList.remove('hidden'); kreditorLain.focus(); }
+  if (kreditor.value === '_OTHER_'){ kreditorLain.classList.remove('hidden'); kreditorLain.focus(); }
   else { kreditorLain.classList.add('hidden'); kreditorLain.value=''; }
 });
 
@@ -115,8 +115,8 @@ function validateFileList(fileList, label){
   for (const f of files){
     const okType = ALLOWED.some(p => f.type.startsWith(p));
     const okSize = f.size <= MAX_MB * 1024 * 1024;
-    if (!okType){ return quickPop(`${label}: ${f.name} bertipe tidak didukung.`); }
-    if (!okSize){ return quickPop(`${label}: ${f.name} > ${MAX_MB}MB.`); }
+    if (!okType){ return quickPop(${label}: ${f.name} bertipe tidak didukung.); }
+    if (!okSize){ return quickPop(${label}: ${f.name} > ${MAX_MB}MB.); }
   }
   return true;
 }
@@ -134,8 +134,8 @@ function filesForPreview(){
 }
 
 function openPreview(){
-  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
-  if (kreditor.value==='__OTHER__' && !kreditorFinal){ return quickPop('Isi Kreditor/Supplier.'); }
+  const kreditorFinal = (kreditor.value==='_OTHER_') ? (kreditorLain.value||'').trim() : kreditor.value;
+  if (kreditor.value==='_OTHER_' && !kreditorFinal){ return quickPop('Isi Kreditor/Supplier.'); }
 
   const isMatPeng = (STATE.kategori==='Material' && STATE.jenis==='Pengeluaran');
   let ok = true;
@@ -190,6 +190,8 @@ const resultMsg  = document.getElementById('resultMsg');
 const btnKeluar  = document.getElementById('btnKeluar');
 const btnInputKembali = document.getElementById('btnInputKembali');
 
+// ⚠ JANGAN pasang listener permanen ke btnKeluar di sini.
+//   Handler-nya di-set dinamis oleh setKeluarBehavior() tiap kali showResult dipanggil.
 btnInputKembali.addEventListener('click', ()=>{
   resultPop.classList.remove('show');
   // reset & kembali ke step1
@@ -202,19 +204,31 @@ btnInputKembali.addEventListener('click', ()=>{
 });
 
 function exitApp(){
+  // Keluar dari TAB saja
   window.open('', '_self'); window.close();
   setTimeout(()=>{
     if (document.visibilityState !== 'hidden'){
-      if (history.length > 1){ history.go(-history.length); }
-      else { location.replace(EXIT_FALLBACK_URL); }
+      // ganti tab menjadi kosong
+      location.replace(EXIT_FALLBACK_URL);
     }
-  }, 120);
+  }, 80);
 }
 
 function showLoading(on=true){ loadingPop.classList.toggle('show', on); }
 
+function setKeluarBehavior(mode){
+  // buang handler sebelumnya dan set yang baru
+  btnKeluar.onclick = null;
+  if (mode === 'success') {
+    btnKeluar.onclick = exitApp;                 // sukses → keluar tab
+  } else {
+    btnKeluar.onclick = ()=> resultPop.classList.remove('show'); // error → tutup popup saja
+  }
+}
+
 function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
   resultMode = (type==='success') ? 'success' : 'error';
+  setKeluarBehavior(resultMode);
 
   if (type==='success'){
     resultIcon.innerHTML =
@@ -234,18 +248,13 @@ function showResult(type='success', title='Selesai', message='Data anda telah te
   resultMsg.textContent   = message || (type==='success' ? 'Data anda telah terinput.' : 'Silakan coba lagi.');
   document.getElementById('btnInputKembali').style.display = opts.onlyDismiss ? 'none' : '';
   resultPop.classList.add('show');
-
-  // Atur perilaku tombol Keluar sesuai mode
-  btnKeluar.onclick = (resultMode==='success')
-    ? exitApp
-    : ()=> resultPop.classList.remove('show'); // error: hanya menutup popup
 }
 
 /* ===== Kirim ke GAS ===== */
 function sendData(){
   previewModal.classList.remove('active');
 
-  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
+  const kreditorFinal = (kreditor.value==='_OTHER_') ? (kreditorLain.value||'').trim() : kreditor.value;
 
   const payload = {
     penginput: penginputSel.value,
@@ -344,13 +353,13 @@ function openPicker(selectEl, btn){
   pickerPop.classList.add('show');
 }
 
-/* Enhance semua select menjadi tombol + picker (mobile-safe) */
+/* Enhance semua select → tombol + picker (mobile-safe) */
 function initNiceSelects(){
   document.querySelectorAll('select[data-nice]').forEach((sel)=>{
     if (sel.dataset.enhanced) return;
     sel.dataset.enhanced = "1";
 
-    sel.classList.add('native-hidden');  // benar-benar non-interaktif (hindari native dropdown)
+    sel.classList.add('native-hidden'); // benar-benar non-interaktif
 
     const wrap = document.createElement('div');
     wrap.className = 'nice-wrap';
@@ -364,7 +373,6 @@ function initNiceSelects(){
     btn.textContent = sel.options[sel.selectedIndex]?.text || '';
     wrap.appendChild(btn);
 
-    // pastikan mobile memakai picker, bukan native:
     const open = (e)=>{ e.preventDefault(); openPicker(sel, btn); };
     btn.addEventListener('click', open);
     btn.addEventListener('touchstart', open, {passive:false});
