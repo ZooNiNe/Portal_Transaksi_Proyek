@@ -11,7 +11,7 @@
 </head>
 <body>
 
-  <!-- ===== LANDING 1: Identitas ===== -->
+  <!-- ===== LANDING 1 ===== -->
   <section class="landing bg1" id="step1">
     <div class="overlay"></div>
     <div class="landing-inner">
@@ -28,7 +28,7 @@
         <div class="landing-form">
           <div class="form-group">
             <label for="penginput">Penginput</label>
-            <select id="penginput" required>
+            <select id="penginput" data-nice required>
               <option>Oji</option>
               <option>Bemo</option>
               <option>Opi</option>
@@ -37,7 +37,7 @@
 
           <div class="form-group">
             <label for="jenis">Jenis Transaksi</label>
-            <select id="jenis" required>
+            <select id="jenis" data-nice required>
               <option>Pengeluaran</option>
               <option>Pembayaran</option>
             </select>
@@ -45,11 +45,12 @@
 
           <div class="form-group">
             <label for="kategoriAwal">Kategori</label>
-            <select id="kategoriAwal" required>
-                <option value="Material">Material</option>
-                <option value="Upah">Upah</option>
-                <option value="Operasional">Operasional</option>
-                <option value="Lainnya">Lainnya</option>            </select>
+            <select id="kategoriAwal" data-nice required>
+              <option value="Material">Material</option>
+              <option value="Operasional">Operasional</option>
+              <option value="Upah">Upah</option>
+              <option value="Lainnya">Lainnya</option>
+            </select>
           </div>
 
           <button id="toStep2" class="submit-btn wide">Masuk</button>
@@ -60,7 +61,7 @@
     </div>
   </section>
 
-  <!-- ===== LANDING 2: Data Utama ===== -->
+  <!-- ===== LANDING 2 ===== -->
   <section class="landing bg2 hidden" id="step2">
     <div class="overlay"></div>
     <div class="landing-inner">
@@ -75,10 +76,11 @@
 
         <div class="form-group">
           <label for="proyek">Nama Proyek</label>
-          <select id="proyek" required>
+          <select id="proyek" data-nice required>
             <option value="Proyek Utama(Pembangunan Dapur)">Proyek Utama(Pembangunan Dapur)</option>
             <option value="Proyek Pembenahan Lahan">Proyek Pembenahan Lahan</option>
-            <option value="Proyek Lainnya">Proyek Lainnya</option>          </select>
+            <option value="Proyek Lainnya">Proyek Lainnya</option>
+          </select>
         </div>
 
         <div class="form-group">
@@ -93,11 +95,11 @@
 
         <div class="form-group">
           <label for="kreditor">Kreditor / Supplier</label>
-          <select id="kreditor">
+          <select id="kreditor" data-nice>
             <option value="CV Alam Berkah Abadi">CV Alam Berkah Abadi</option>
             <option value="TB Berkah Naufal">TB Berkah Naufal</option>
             <option value="CV Sari Doa (Cilawang)">CV Sari Doa (Cilawang)</option>
-            <option value="Galian Batu Pareang (Haji Agus)">Galian Batu Pareang (Haji Agus)</option>            
+            <option value="Galian Batu Pareang (Haji Agus)">Galian Batu Pareang (Haji Agus)</option>
             <option value="Warung Agil">Warung Agil</option>
             <option value="__OTHER__">Lainnya… (ketik sendiri)</option>
           </select>
@@ -106,7 +108,7 @@
 
         <div class="form-group">
           <label for="status">Status</label>
-          <select id="status" required>
+          <select id="status" data-nice required>
             <option>Sudah Dibayar</option>
             <option>Belum Dibayar</option>
           </select>
@@ -120,7 +122,7 @@
     </div>
   </section>
 
-  <!-- ===== LANDING 3: Upload ===== -->
+  <!-- ===== LANDING 3 ===== -->
   <section class="landing bg3 hidden" id="step3">
     <div class="overlay"></div>
     <div class="landing-inner">
@@ -128,7 +130,6 @@
         <h2 class="landing-title">Lampiran Bukti</h2>
         <p class="landing-subtitle">Unggah bukti sesuai kebutuhan</p>
 
-        <!-- Muncul hanya jika Kategori=Material & Jenis=Pengeluaran -->
         <div id="wrapBon" class="form-group hidden">
           <label for="buktiBon">Bukti Bon (Invoice)</label>
           <input type="file" id="buktiBon" accept="image/*,application/pdf" multiple/>
@@ -139,7 +140,6 @@
           <input type="file" id="buktiSJ" accept="image/*,application/pdf" multiple/>
         </div>
 
-        <!-- Default untuk kondisi lain -->
         <div id="wrapBuktiUmum" class="form-group hidden">
           <label for="buktiUmum">Bukti Transaksi</label>
           <input type="file" id="buktiUmum" accept="image/*,application/pdf" multiple/>
@@ -153,13 +153,12 @@
     </div>
   </section>
 
-  <!-- ===== MODAL PREVIEW (2-step + scroll + sticky) ===== -->
+  <!-- ===== MODAL PREVIEW ===== -->
   <div class="modal-backdrop" id="previewModal">
     <div class="modal-content">
       <h3>Konfirmasi Data</h3>
       <p>Periksa kembali sebelum mengirim.</p>
 
-      <!-- STEP SWITCH -->
       <div class="pv-steps">
         <button id="pvTab1" class="pv-tab active">Ringkasan</button>
         <button id="pvTab2" class="pv-tab">Lampiran</button>
@@ -198,8 +197,28 @@
     </div>
   </div>
 
-  <!-- TOAST CONTAINER -->
-  <div id="toastContainer" aria-live="polite" aria-atomic="true"></div>
+  <!-- ===== LOADING POPUP ===== -->
+  <div class="overlay-pop" id="loadingPop" aria-hidden="true">
+    <div class="pop-card">
+      <div class="spinner"></div>
+      <h4>Mengirim data...</h4>
+      <p>Mohon tunggu sebentar.</p>
+    </div>
+  </div>
+
+  <!-- ===== RESULT POPUP (SUCCESS/ERROR) ===== -->
+  <div class="overlay-pop" id="resultPop" aria-hidden="true">
+    <div class="pop-card" id="resultCard">
+      <!-- Icon animasi akan di-inject via JS -->
+      <div id="resultIcon"></div>
+      <h4 id="resultTitle">Selesai</h4>
+      <p id="resultMsg">Data anda telah terinput.</p>
+      <div class="result-actions">
+        <button type="button" class="btn-outline" id="btnKeluar">Keluar</button>
+        <button type="button" class="submit-btn" id="btnInputKembali">Input Kembali</button>
+      </div>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>
