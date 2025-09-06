@@ -1,5 +1,5 @@
 // URL Web App GAS (sudah /exec)
-const scriptURL = 'https://script.google.com/macros/s/AKfycbyAOVy2t6K03MoMreSP82OuXGUa_NbiA4JlTp3Sq2rm-KlKb1QLIOP7TyBy98raAAj2Pg/exec';
+const scriptURL = 'https://script.google.com/macros/s/AKfycby5M6p9T7uo51PCCatCbVGa14yyqFlyD5YrIt1Zj0eeGcY6XJj5k-IWFb6Qu7VtxhCHaw/exec';
 
 // ====== Elemen langkah ======
 const step1 = document.getElementById('step1');
