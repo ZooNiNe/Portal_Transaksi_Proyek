@@ -1,7 +1,7 @@
 // URL Web App GAS
 const scriptURL = 'https://script.google.com/macros/s/AKfycbyAOVy2t6K03MoMreSP82OuXGUa_NbiA4JlTp3Sq2rm-KlKb1QLIOP7TyBy98raAAj2Pg/exec';
 
-// Elemen langkah
+// ====== Elemen langkah ======
 const step1 = document.getElementById('step1');
 const step2 = document.getElementById('step2');
 const step3 = document.getElementById('step3');
@@ -11,9 +11,9 @@ const penginputSel = document.getElementById('penginput');
 const jenisSel = document.getElementById('jenis');
 const kategoriAwalSel = document.getElementById('kategoriAwal');
 document.getElementById('toStep2').addEventListener('click', () => {
-  if (!penginputSel.value) return alert('Pilih Penginput.');
-  if (!jenisSel.value) return alert('Pilih Jenis Transaksi.');
-  if (!kategoriAwalSel.value) return alert('Pilih Kategori.');
+  if (!penginputSel.value){ showToast('Pilih Penginput.', 'error'); return; }
+  if (!jenisSel.value){ showToast('Pilih Jenis Transaksi.', 'error'); return; }
+  if (!kategoriAwalSel.value){ showToast('Pilih Kategori.', 'error'); return; }
   go(2);
 });
 
@@ -25,16 +25,16 @@ const nominal = document.getElementById('nominal');
 const kreditor = document.getElementById('kreditor');
 const kreditorLain = document.getElementById('kreditorLain');
 const statusSel = document.getElementById('status');
+
 document.getElementById('backTo1').addEventListener('click', (e)=>{e.preventDefault(); go(1);});
 document.getElementById('toStep3').addEventListener('click', (e)=>{
   e.preventDefault();
-  if (!tanggal.value) return alert('Isi Tanggal.');
-  if (!proyek.value) return alert('Pilih Proyek.');
-  if (!uraian.value) return alert('Isi Uraian.');
-  if (!nominal.value) return alert('Isi Nominal.');
-  if (!statusSel.value) return alert('Pilih Status.');
-  prepareUploadSection(); // atur input upload sesuai kondisi
-  go(3);
+  if (!tanggal.value){ showToast('Isi Tanggal.', 'error'); return; }
+  if (!proyek.value){ showToast('Pilih Proyek.', 'error'); return; }
+  if (!uraian.value){ showToast('Isi Uraian.', 'error'); return; }
+  if (!nominal.value){ showToast('Isi Nominal.', 'error'); return; }
+  if (!statusSel.value){ showToast('Pilih Status.', 'error'); return; }
+  prepareUploadSection(); go(3);
 });
 
 // Kreditor: opsi "Lainnya"
@@ -43,7 +43,7 @@ kreditor.addEventListener('change', ()=>{
   else { kreditorLain.classList.add('hidden'); kreditorLain.value=''; }
 });
 
-// Rupiah
+// Rupiah formatter
 const toIDR = v => (v||'').toString().replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
 nominal.addEventListener('input', ()=>{ nominal.value = toIDR(nominal.value); });
 
@@ -51,9 +51,8 @@ nominal.addEventListener('input', ()=>{ nominal.value = toIDR(nominal.value); })
 const wrapBon = document.getElementById('wrapBon');
 const wrapSJ  = document.getElementById('wrapSJ');
 const wrapUmum= document.getElementById('wrapBuktiUmum');
-document.getElementById('backTo2').addEventListener('click',(e)=>{e.preventDefault(); go(2);});
 
-// Tombol Kirim → preview modal
+document.getElementById('backTo2').addEventListener('click',(e)=>{e.preventDefault(); go(2);});
 document.getElementById('openPreview').addEventListener('click', openPreview);
 
 // Modal
@@ -64,7 +63,7 @@ cancelBtn.addEventListener('click', ()=> previewModal.classList.remove('active')
 confirmBtn.addEventListener('click', sendData);
 
 // State global
-const STATE = { penginput:'', jenis:'', kategori:'', };
+const STATE = { penginput:'', jenis:'', kategori:'' };
 
 function go(n){
   step1.classList.toggle('hidden', n!==1);
@@ -84,43 +83,34 @@ function prepareUploadSection(){
   wrapUmum.classList.toggle('hidden', isMaterialPengeluaran);
 }
 
-// ===== Preview =====
-function openPreview(){
-  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
-  if (kreditor.value==='__OTHER__' && !kreditorFinal){ alert('Isi Kreditor/Supplier.'); kreditorLain.focus(); return; }
-
-  // tampilkan data
-  setText('pv-penginput', STATE.penginput);
-  setText('pv-jenis', STATE.jenis);
-  setText('pv-kategori', STATE.kategori);
-  setText('pv-tanggal', tanggal.value);
-  setText('pv-proyek', proyek.value);
-  setText('pv-uraian', uraian.value);
-  setText('pv-nominal', nominal.value ? 'Rp '+nominal.value : '');
-  setText('pv-kreditor', kreditorFinal || '-');
-  setText('pv-status', statusSel.value);
-
-  // thumbnails
-  const thumbs = document.getElementById('pv-thumbs'); thumbs.innerHTML='';
-  let count = 0;
-  const files = gatherFilesForPreview();
-  if (!files.length){
-    document.getElementById('pv-bukti-kosong').style.display='block';
-  } else {
-    document.getElementById('pv-bukti-kosong').style.display='none';
-    files.forEach(f=>{
-      const box = document.createElement('div'); box.className='thumb';
-      if (f.type.toLowerCase().startsWith('image/')){
-        const img=document.createElement('img'); const fr=new FileReader();
-        fr.onload = ev=> img.src=ev.target.result; fr.readAsDataURL(f);
-        box.appendChild(img);
-      } else if (f.type==='application/pdf'){ box.classList.add('pdf'); }
-      else { box.textContent=f.name; }
-      thumbs.appendChild(box); count++;
-    });
-  }
-  previewModal.classList.add('active');
+/* ======== Toast util ======== */
+function showToast(message, type='success', duration=3000){
+  const wrap = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = `toast ${type==='error' ? 'toast-error':'toast-success'}`;
+  el.innerHTML = `<span>${message}</span><button class="close" aria-label="Close">&times;</button>`;
+  wrap.appendChild(el);
+  const close = ()=> { el.style.opacity='0'; setTimeout(()=>el.remove(), 180); };
+  el.querySelector('.close').onclick = close;
+  setTimeout(close, duration);
 }
+
+/* ======== Validasi file ======== */
+const MAX_MB = 5;
+const ALLOWED = ['image/', 'application/pdf'];
+
+function validateFileList(fileList, label){
+  const files = [...(fileList||[])];
+  for (const f of files){
+    const okType = ALLOWED.some(p => f.type.startsWith(p));
+    const okSize = f.size <= MAX_MB * 1024 * 1024;
+    if (!okType){ showToast(`${label}: ${f.name} bertipe tidak didukung.`, 'error'); return false; }
+    if (!okSize){ showToast(`${label}: ${f.name} > ${MAX_MB}MB.`, 'error'); return false; }
+  }
+  return true;
+}
+
+/* ======== Preview ======== */
 function setText(id,v){ document.getElementById(id).textContent = v || '-'; }
 
 function gatherFilesForPreview(){
@@ -132,7 +122,55 @@ function gatherFilesForPreview(){
   }
 }
 
-// ===== Kirim =====
+function openPreview(){
+  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
+  if (kreditor.value==='__OTHER__' && !kreditorFinal){ showToast('Isi Kreditor/Supplier.', 'error'); kreditorLain.focus(); return; }
+
+  // Validasi file
+  const isMatPeng = (STATE.kategori==='Material' && STATE.jenis==='Pengeluaran');
+  let ok = true;
+  if (isMatPeng){
+    ok = validateFileList(document.getElementById('buktiBon').files, 'Bukti Bon') &&
+         validateFileList(document.getElementById('buktiSJ').files, 'Bukti Surat Jalan');
+  } else {
+    ok = validateFileList(document.getElementById('buktiUmum').files, 'Bukti Transaksi');
+  }
+  if (!ok) return;
+
+  // Tampil data
+  setText('pv-penginput', STATE.penginput);
+  setText('pv-jenis', STATE.jenis);
+  setText('pv-kategori', STATE.kategori);
+  setText('pv-tanggal', tanggal.value);
+  setText('pv-proyek', proyek.value);
+  setText('pv-uraian', uraian.value);
+  setText('pv-nominal', nominal.value ? 'Rp '+nominal.value : '');
+  setText('pv-kreditor', kreditorFinal || '-');
+  setText('pv-status', statusSel.value);
+
+  // Thumbs
+  const thumbs = document.getElementById('pv-thumbs'); thumbs.innerHTML='';
+  const files = gatherFilesForPreview();
+  if (!files.length){
+    document.getElementById('pv-bukti-kosong').style.display='block';
+  } else {
+    document.getElementById('pv-bukti-kosong').style.display='none';
+    files.forEach(f=>{
+      const box = document.createElement('div'); box.className='thumb';
+      if ((f.type||'').toLowerCase().startsWith('image/')){
+        const img=document.createElement('img'); const fr=new FileReader();
+        fr.onload = ev=> img.src=ev.target.result; fr.readAsDataURL(f);
+        box.appendChild(img);
+      } else if (f.type==='application/pdf'){ box.classList.add('pdf'); }
+      else { box.textContent=f.name; }
+      thumbs.appendChild(box);
+    });
+  }
+
+  previewModal.classList.add('active');
+}
+
+/* ======== Kirim ke GAS ======== */
 function sendData(){
   previewModal.classList.remove('active');
 
@@ -177,21 +215,28 @@ function sendData(){
     pushFiles(document.getElementById('buktiUmum').files, payload.buktiLain);
   }
 
-  Promise.all(readers).then(()=>{
-    return fetch(scriptURL, { method:'POST', body: JSON.stringify(payload) });
-  }).then(r=>r.json()).then(data=>{
+  Promise.all(readers)
+  .then(()=> fetch(scriptURL, { method:'POST', body: JSON.stringify(payload) }))
+  .then(r=> r.json())
+  .then(data=>{
     if (data.status==='ok'){
-      alert('Tersimpan. ID: '+data.id);
+      showToast('Tersimpan. ID: ' + data.id, 'success', 4000);
       // reset minimal
-      if (document.getElementById('buktiBon')) document.getElementById('buktiBon').value='';
-      if (document.getElementById('buktiSJ')) document.getElementById('buktiSJ').value='';
-      if (document.getElementById('buktiUmum')) document.getElementById('buktiUmum').value='';
-      // balik ke awal?
-      // step3.classList.add('hidden'); step1.classList.remove('hidden');
+      ['buktiBon','buktiSJ','buktiUmum'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+      tanggal.value=''; proyek.value=''; uraian.value=''; nominal.value='';
+      kreditor.value=''; kreditorLain.value=''; kreditorLain.classList.add('hidden');
+      statusSel.value='';
+
+      // auto-return ke Landing 1
+      step3.classList.add('hidden'); step2.classList.add('hidden'); step1.classList.remove('hidden');
+      penginputSel.value=''; jenisSel.value=''; kategoriAwalSel.value='';
+      STATE.penginput=''; STATE.jenis=''; STATE.kategori='';
     } else {
-      throw new Error(data.error || 'Gagal simpan.');
+      showToast(data.error || 'Gagal simpan.', 'error');
     }
-  }).catch(err=>{
-    console.error(err); alert('Terjadi kesalahan: '+err.message);
+  })
+  .catch(err=>{
+    console.error(err);
+    showToast('Terjadi kesalahan: ' + err.message, 'error');
   });
 }
