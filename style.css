@@ -1,15 +1,14 @@
-/* Base */
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{scroll-behavior:smooth}
 body{font-family:'Poppins',sans-serif;background:#f6f7fb;color:#101828}
 
 /* LANDING */
 .landing{position:relative;min-height:100svh;display:flex;align-items:center;justify-content:center;padding:clamp(12px,2.8vw,24px)}
-.landing .overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(255,255,255,.55))}
+.landing .overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(255,255,255,.55));pointer-events:none}
 .bg1{background:url('bg1.jpg') center/cover no-repeat}
 .bg2{background:url('bg2.jpg') center/cover no-repeat}
 .bg3{background:url('bg3.jpg') center/cover no-repeat}
-.landing-inner{position:relative;z-index:1;width:100%;max-width:820px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.landing-inner{position:relative;z-index:2;width:100%;max-width:820px;display:flex;flex-direction:column;align-items:center;gap:12px}
 .logo-row{display:flex;justify-content:center;align-items:center;gap:14px}
 .logo-3{width:68px;height:68px;object-fit:contain;filter:drop-shadow(0 2px 4px rgba(0,0,0,.12))}
 .landing-logos{margin-bottom:4px}
@@ -30,7 +29,7 @@ body{font-family:'Poppins',sans-serif;background:#f6f7fb;color:#101828}
 .submit-btn{flex:1;padding:12px;border:none;border-radius:12px;font-weight:700;background:linear-gradient(90deg,#00c2ff,#2f6bff);cursor:pointer;box-shadow:0 4px 14px rgba(47,107,255,.22);color:#fff!important;min-height:48px}
 .submit-btn.wide{max-width:320px;margin:6px auto 0;display:block}
 .btn-outline:hover{background:#f3f6ff}
-.submit-btn:hover{transform:translateY(-1px)}
+.submit-btn:active{transform:translateY(1px)}
 .btn-confirm{border:none;padding:14px;border-radius:12px;font-weight:700;background:linear-gradient(90deg,#00c2ff,#2f6bff);color:#fff!important;box-shadow:0 4px 14px rgba(47,107,255,.24)}
 .btn-edit{background:#fff;color:#344054;border:1.5px solid #98a2b3;padding:12px;border-radius:12px;font-weight:600}
 .btn-outline.small{padding:10px 12px;border-radius:10px}
@@ -38,7 +37,7 @@ body{font-family:'Poppins',sans-serif;background:#f6f7fb;color:#101828}
 .credit{color:#475467;font-size:.85rem}
 .hidden{display:none}
 
-/* MODAL PREVIEW */
+/* PREVIEW MODAL */
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:none;justify-content:center;align-items:center;padding:14px;backdrop-filter:blur(3px)}
 .modal-backdrop.active{display:flex}
 .modal-content{background:#fff;color:#101828;border:1px solid #e6e9f3;border-radius:16px;padding:12px 12px 0;width:min(96vw,620px);box-shadow:0 12px 28px rgba(16,24,40,.18);max-height:92svh;display:flex;flex-direction:column}
@@ -63,17 +62,17 @@ body{font-family:'Poppins',sans-serif;background:#f6f7fb;color:#101828}
 .pv-pane.active{display:block}
 .pv-nav{display:flex;justify-content:space-between;gap:8px}
 
-/* ===== POPUP COMMON ===== */
+/* POPUP COMMON */
 .overlay-pop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:clamp(12px,3vw,24px);background:rgba(15,23,42,.55);backdrop-filter:blur(2px);z-index:2000}
 .overlay-pop.show{display:flex}
 .pop-card{position:relative;width:min(92vw,440px);background:#fff;border:1px solid #e7e9f2;border-radius:16px;box-shadow:0 16px 32px rgba(16,24,40,.18);padding:20px;text-align:center}
 .pop-card h4{font-size:clamp(1.05rem,4vw,1.18rem);margin-top:2px;color:#0f172a}
 .pop-card p{color:#667085;margin-top:4px}
 
-/* Close chip untuk ERROR */
+/* Error close chip kiri-atas */
 .close-chip{
   position:absolute;left:10px;top:10px;width:34px;height:34px;border-radius:50%;
-  background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);border:none;cursor:pointer;
+  background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.18);border:none;cursor:pointer
 }
 .close-chip::before,.close-chip::after{
   content:"";position:absolute;left:9px;top:16px;width:16px;height:2.5px;background:#111;border-radius:2px
@@ -90,40 +89,25 @@ body{font-family:'Poppins',sans-serif;background:#f6f7fb;color:#101828}
 .icon-wrap svg{width:46px;height:46px}
 svg .stroke{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:100;stroke-dashoffset:100;animation:draw .6s ease forwards .1s}
 @keyframes draw{to{stroke-dashoffset:0}}
-
 .result-actions{display:flex;gap:10px;margin-top:14px}
-.result-actions .submit-btn{min-width:44%}
-.result-actions .btn-outline{min-width:44%}
 
-/* ===== Picker (dropdown modal) ===== */
+/* PICKER (dropdown modal) */
 .picker-card{padding:18px}
-.picker-list{
-  margin-top:10px; text-align:left; max-height:60svh; overflow:auto;
-  border:1px solid #e9eef8; border-radius:14px; padding:8px; background:#fff;
-}
-.picker-option{
-  padding:12px 14px; margin:6px; border-radius:12px; cursor:pointer; user-select:none;
-  border:1px solid #e7eaf5; background:#fff; color:#101828; font-weight:600;
-}
-.picker-option:hover{ background:#f6f9ff }
-.picker-option.selected{
-  color:#fff; border-color:#2f6bff;
-  background:linear-gradient(90deg,#00c2ff,#2f6bff);
-}
-.picker-actions{ display:flex; gap:10px; margin-top:12px; justify-content:flex-end }
+.picker-list{margin-top:10px;text-align:left;max-height:60svh;overflow:auto;border:1px solid #e9eef8;border-radius:14px;padding:8px;background:#fff}
+.picker-option{padding:12px 14px;margin:6px;border-radius:12px;cursor:pointer;user-select:none;border:1px solid #e7eaf5;background:#fff;color:#101828;font-weight:600}
+.picker-option:hover{background:#f6f9ff}
+.picker-option.selected{color:#fff;border-color:#2f6bff;background:linear-gradient(90deg,#00c2ff,#2f6bff)}
+.picker-actions{display:flex;gap:10px;margin-top:12px;justify-content:flex-end}
 
-/* Nice-select trigger (btn) dan “disable” select asli total */
+/* Nice-select trigger + matikan select asli */
 .nice-wrap{position:relative}
 .nice-select{
-  position:relative; z-index:5;
-  width:100%;border:1px solid #d0d5dd;border-radius:10px;background:#fff;
+  position:relative;z-index:5;width:100%;border:1px solid #d0d5dd;border-radius:10px;background:#fff;
   padding:12px 40px 12px 12px;cursor:pointer;font-size:1rem;color:#101828;min-height:48px;text-align:left
 }
 .native-hidden{
-  position:absolute !important; inset:0 !important;
-  opacity:0 !important; pointer-events:none !important;
-  width:100% !important; height:100% !important;
-  -webkit-appearance:none; appearance:none;
+  position:absolute !important;inset:0 !important;opacity:0 !important;pointer-events:none !important;
+  width:100% !important;height:100% !important;-webkit-appearance:none;appearance:none
 }
 
 /* Mobile tweaks */
