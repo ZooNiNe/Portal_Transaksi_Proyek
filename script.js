@@ -1,4 +1,4 @@
-// GAS Web App URL (Anyone with the link)
+// GAS Web App URL
 const scriptURL = 'https://script.google.com/macros/s/AKfycby5M6p9T7uo51PCCatCbVGa14yyqFlyD5YrIt1Zj0eeGcY6XJj5k-IWFb6Qu7VtxhCHaw/exec';
 const EXIT_FALLBACK_URL = 'about:blank';
 
@@ -35,7 +35,7 @@ document.getElementById('toStep3').addEventListener('click', (e)=>{
 
 /* Kreditor "Lainnya" */
 kreditor.addEventListener('change', ()=>{
-  if (kreditor.value === '_OTHER_'){ kreditorLain.classList.remove('hidden'); kreditorLain.focus(); }
+  if (kreditor.value === '__OTHER__'){ kreditorLain.classList.remove('hidden'); kreditorLain.focus(); }
   else { kreditorLain.classList.add('hidden'); kreditorLain.value=''; }
 });
 
@@ -103,7 +103,7 @@ function prepareUploadSection(){
 /* ===== Result pop (juga untuk validasi) ===== */
 let resultMode = 'success'; // 'success' | 'error'
 function quickPop(message){
-  showResult('error','Validasi Gagal', message, {onlyDismiss:true});
+  showResult('error','Terjadi Kesalahan', message || 'Periksa kembali input anda.', {onlyDismiss:true});
   return false;
 }
 
@@ -115,8 +115,8 @@ function validateFileList(fileList, label){
   for (const f of files){
     const okType = ALLOWED.some(p => f.type.startsWith(p));
     const okSize = f.size <= MAX_MB * 1024 * 1024;
-    if (!okType){ return quickPop(${label}: ${f.name} bertipe tidak didukung.); }
-    if (!okSize){ return quickPop(${label}: ${f.name} > ${MAX_MB}MB.); }
+    if (!okType){ return quickPop(`${label}: ${f.name} bertipe tidak didukung.`); }
+    if (!okSize){ return quickPop(`${label}: ${f.name} > ${MAX_MB}MB.`); }
   }
   return true;
 }
@@ -134,8 +134,8 @@ function filesForPreview(){
 }
 
 function openPreview(){
-  const kreditorFinal = (kreditor.value==='_OTHER_') ? (kreditorLain.value||'').trim() : kreditor.value;
-  if (kreditor.value==='_OTHER_' && !kreditorFinal){ return quickPop('Isi Kreditor/Supplier.'); }
+  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
+  if (kreditor.value==='__OTHER__' && !kreditorFinal){ return quickPop('Isi Kreditor/Supplier.'); }
 
   const isMatPeng = (STATE.kategori==='Material' && STATE.jenis==='Pengeluaran');
   let ok = true;
@@ -189,9 +189,9 @@ const resultTitle= document.getElementById('resultTitle');
 const resultMsg  = document.getElementById('resultMsg');
 const btnKeluar  = document.getElementById('btnKeluar');
 const btnInputKembali = document.getElementById('btnInputKembali');
+const resultActions = document.getElementById('resultActions');
+const resultClose = document.getElementById('resultClose');
 
-// ⚠ JANGAN pasang listener permanen ke btnKeluar di sini.
-//   Handler-nya di-set dinamis oleh setKeluarBehavior() tiap kali showResult dipanggil.
 btnInputKembali.addEventListener('click', ()=>{
   resultPop.classList.remove('show');
   // reset & kembali ke step1
@@ -204,37 +204,32 @@ btnInputKembali.addEventListener('click', ()=>{
 });
 
 function exitApp(){
-  // Keluar dari TAB saja
+  // Keluar dari TAB (bukan seluruh browser)
   window.open('', '_self'); window.close();
-  setTimeout(()=>{
-    if (document.visibilityState !== 'hidden'){
-      // ganti tab menjadi kosong
-      location.replace(EXIT_FALLBACK_URL);
-    }
-  }, 80);
+  setTimeout(()=>{ if (document.visibilityState !== 'hidden'){ location.replace(EXIT_FALLBACK_URL); } }, 80);
 }
 
 function showLoading(on=true){ loadingPop.classList.toggle('show', on); }
 
-function setKeluarBehavior(mode){
-  // buang handler sebelumnya dan set yang baru
-  btnKeluar.onclick = null;
-  if (mode === 'success') {
-    btnKeluar.onclick = exitApp;                 // sukses → keluar tab
-  } else {
-    btnKeluar.onclick = ()=> resultPop.classList.remove('show'); // error → tutup popup saja
-  }
+function setErrorCloseOnly(){
+  // tombol Keluar/Input Kembali disembunyikan; muncul ikon close
+  resultActions.style.display = 'none';
+  resultClose.classList.remove('hidden');
+  resultClose.onclick = ()=> resultPop.classList.remove('show');
+}
+function setSuccessActions(){
+  resultActions.style.display = '';
+  resultClose.classList.add('hidden');
+  btnKeluar.onclick = exitApp; // keluar tab
 }
 
 function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
-  resultMode = (type==='success') ? 'success' : 'error';
-  setKeluarBehavior(resultMode);
-
   if (type==='success'){
     resultIcon.innerHTML =
       `<div class="icon-wrap success" aria-hidden="true">
         <svg viewBox="0 0 52 52"><path class="stroke" d="M14 27 l8 8 l16 -18"/></svg>
       </div>`;
+    setSuccessActions();
   } else {
     resultIcon.innerHTML =
       `<div class="icon-wrap error" aria-hidden="true">
@@ -243,10 +238,11 @@ function showResult(type='success', title='Selesai', message='Data anda telah te
           <path class="stroke" d="M36 16 L16 36"/>
         </svg>
       </div>`;
+    setErrorCloseOnly();
   }
-  resultTitle.textContent = title || (type==='success' ? 'Selesai' : 'Terjadi Kesalahan');
-  resultMsg.textContent   = message || (type==='success' ? 'Data anda telah terinput.' : 'Silakan coba lagi.');
-  document.getElementById('btnInputKembali').style.display = opts.onlyDismiss ? 'none' : '';
+  resultTitle.textContent = title;
+  resultMsg.textContent   = message;
+  document.getElementById('btnInputKembali').style.display = (type==='success' && !opts.onlyDismiss) ? '' : 'none';
   resultPop.classList.add('show');
 }
 
@@ -254,7 +250,7 @@ function showResult(type='success', title='Selesai', message='Data anda telah te
 function sendData(){
   previewModal.classList.remove('active');
 
-  const kreditorFinal = (kreditor.value==='_OTHER_') ? (kreditorLain.value||'').trim() : kreditor.value;
+  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
 
   const payload = {
     penginput: penginputSel.value,
@@ -359,7 +355,8 @@ function initNiceSelects(){
     if (sel.dataset.enhanced) return;
     sel.dataset.enhanced = "1";
 
-    sel.classList.add('native-hidden'); // benar-benar non-interaktif
+    // Matikan native dropdown total
+    sel.classList.add('native-hidden');
 
     const wrap = document.createElement('div');
     wrap.className = 'nice-wrap';
@@ -375,6 +372,7 @@ function initNiceSelects(){
 
     const open = (e)=>{ e.preventDefault(); openPicker(sel, btn); };
     btn.addEventListener('click', open);
+    // wajib untuk mobile agar tidak pernah memicu native select
     btn.addEventListener('touchstart', open, {passive:false});
   });
 }
