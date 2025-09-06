@@ -209,10 +209,13 @@
   <!-- ===== RESULT POPUP ===== -->
   <div class="overlay-pop" id="resultPop" aria-hidden="true">
     <div class="pop-card" id="resultCard">
+      <!-- close chip untuk ERROR -->
+      <button type="button" class="close-chip hidden" id="resultClose" aria-label="Tutup"></button>
+
       <div id="resultIcon"></div>
       <h4 id="resultTitle">Selesai</h4>
       <p id="resultMsg">Data anda telah terinput.</p>
-      <div class="result-actions">
+      <div class="result-actions" id="resultActions">
         <button type="button" class="btn-outline" id="btnKeluar">Keluar</button>
         <button type="button" class="submit-btn" id="btnInputKembali">Input Kembali</button>
       </div>
