@@ -1,7 +1,5 @@
-// URL Web App GAS (deployment: Anyone with the link)
+// GAS Web App URL (Anyone with the link)
 const scriptURL = 'https://script.google.com/macros/s/AKfycby5M6p9T7uo51PCCatCbVGa14yyqFlyD5YrIt1Zj0eeGcY6XJj5k-IWFb6Qu7VtxhCHaw/exec';
-
-// Fallback keluar jika window.close diblokir
 const EXIT_FALLBACK_URL = 'about:blank';
 
 /* ===== Elemen langkah ===== */
@@ -102,7 +100,8 @@ function prepareUploadSection(){
   wrapUmum.classList.toggle('hidden', isMaterialPengeluaran);
 }
 
-/* ===== Pop hasil (pakai modal hasil) ===== */
+/* ===== Result pop (juga untuk validasi) ===== */
+let resultMode = 'success'; // 'success' | 'error'
 function quickPop(message){
   showResult('error','Validasi Gagal', message, {onlyDismiss:true});
   return false;
@@ -191,7 +190,6 @@ const resultMsg  = document.getElementById('resultMsg');
 const btnKeluar  = document.getElementById('btnKeluar');
 const btnInputKembali = document.getElementById('btnInputKembali');
 
-btnKeluar.addEventListener('click', exitApp);
 btnInputKembali.addEventListener('click', ()=>{
   resultPop.classList.remove('show');
   // reset & kembali ke step1
@@ -203,9 +201,21 @@ btnInputKembali.addEventListener('click', ()=>{
   window.scrollTo({top:0,behavior:'smooth'});
 });
 
+function exitApp(){
+  window.open('', '_self'); window.close();
+  setTimeout(()=>{
+    if (document.visibilityState !== 'hidden'){
+      if (history.length > 1){ history.go(-history.length); }
+      else { location.replace(EXIT_FALLBACK_URL); }
+    }
+  }, 120);
+}
+
 function showLoading(on=true){ loadingPop.classList.toggle('show', on); }
 
 function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
+  resultMode = (type==='success') ? 'success' : 'error';
+
   if (type==='success'){
     resultIcon.innerHTML =
       `<div class="icon-wrap success" aria-hidden="true">
@@ -222,19 +232,13 @@ function showResult(type='success', title='Selesai', message='Data anda telah te
   }
   resultTitle.textContent = title || (type==='success' ? 'Selesai' : 'Terjadi Kesalahan');
   resultMsg.textContent   = message || (type==='success' ? 'Data anda telah terinput.' : 'Silakan coba lagi.');
-  btnInputKembali.style.display = opts.onlyDismiss ? 'none' : '';
+  document.getElementById('btnInputKembali').style.display = opts.onlyDismiss ? 'none' : '';
   resultPop.classList.add('show');
-}
 
-/* Keluar web */
-function exitApp(){
-  window.open('', '_self'); window.close();
-  setTimeout(()=>{
-    if (document.visibilityState !== 'hidden'){
-      if (history.length > 1){ history.go(-history.length); }
-      else { location.replace(EXIT_FALLBACK_URL); }
-    }
-  }, 120);
+  // Atur perilaku tombol Keluar sesuai mode
+  btnKeluar.onclick = (resultMode==='success')
+    ? exitApp
+    : ()=> resultPop.classList.remove('show'); // error: hanya menutup popup
 }
 
 /* ===== Kirim ke GAS ===== */
@@ -286,7 +290,7 @@ function sendData(){
       const t = setTimeout(()=>controller.abort(), 25000);
       return fetch(scriptURL, {
         method:'POST',
-        headers:{ 'Content-Type':'text/plain;charset=UTF-8' }, // simple request
+        headers:{ 'Content-Type':'text/plain;charset=UTF-8' },
         body: JSON.stringify(payload),
         signal: controller.signal
       }).finally(()=>clearTimeout(t));
@@ -318,13 +322,9 @@ const pickerPop = document.getElementById('pickerPop');
 const pickerTitle = document.getElementById('pickerTitle');
 const pickerList  = document.getElementById('pickerList');
 const pickerCancel= document.getElementById('pickerCancel');
-
-let currentPicker = null; // {select, btn}
-
 pickerCancel.addEventListener('click', ()=> pickerPop.classList.remove('show'));
 
 function openPicker(selectEl, btn){
-  currentPicker = {select:selectEl, btn};
   pickerTitle.textContent = btn.parentElement.querySelector('label')?.textContent || 'Pilih Opsi';
   pickerList.innerHTML = '';
   [...selectEl.options].forEach((opt, idx)=>{
@@ -337,18 +337,20 @@ function openPicker(selectEl, btn){
         btn.textContent = opt.text;
         selectEl.dispatchEvent(new Event('change',{bubbles:true}));
         pickerPop.classList.remove('show');
-      });
+      }, {passive:true});
     }
     pickerList.appendChild(div);
   });
   pickerPop.classList.add('show');
 }
 
-/* ===== Custom trigger (tanpa dropdown di bawah) ===== */
+/* Enhance semua select menjadi tombol + picker (mobile-safe) */
 function initNiceSelects(){
   document.querySelectorAll('select[data-nice]').forEach((sel)=>{
     if (sel.dataset.enhanced) return;
     sel.dataset.enhanced = "1";
+
+    sel.classList.add('native-hidden');  // benar-benar non-interaktif (hindari native dropdown)
 
     const wrap = document.createElement('div');
     wrap.className = 'nice-wrap';
@@ -362,10 +364,10 @@ function initNiceSelects(){
     btn.textContent = sel.options[sel.selectedIndex]?.text || '';
     wrap.appendChild(btn);
 
-    btn.addEventListener('click', ()=> openPicker(sel, btn));
-
-    // sembunyikan select asli
-    sel.style.position='absolute'; sel.style.opacity='0'; sel.style.pointerEvents='none'; sel.style.width='0'; sel.style.height='0';
+    // pastikan mobile memakai picker, bukan native:
+    const open = (e)=>{ e.preventDefault(); openPicker(sel, btn); };
+    btn.addEventListener('click', open);
+    btn.addEventListener('touchstart', open, {passive:false});
   });
 }
 document.addEventListener('DOMContentLoaded', initNiceSelects);
