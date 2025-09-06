@@ -205,10 +205,34 @@ btnInputKembali.addEventListener('click', ()=>{
   window.scrollTo({top:0,behavior:'smooth'});
 });
 
+/* ======== EXIT: tutup tab robust di mobile ======== */
 function exitApp(){
-  window.open('', '_self'); window.close();
-  setTimeout(()=>{ if (document.visibilityState !== 'hidden'){ location.replace(EXIT_FALLBACK_URL); } }, 80);
+  // 1) coba tutup standar
+  try{ window.open('', '_self'); }catch(e){}
+  try{ window.close(); }catch(e){}
+
+  // 2) bekukan UI agar tidak "kembali ke landing 1"
+  try{
+    document.body.style.background = '#fff';
+    document.body.innerHTML = '';
+  }catch(e){}
+
+  // 3) fallback bertingkat — beberapa mobile butuh ini
+  const attempts = [
+    ()=>location.replace(EXIT_FALLBACK_URL),
+    ()=>location.replace('data:text/html,<meta name=viewport content=width=device-width,initial-scale=1><style>body{font-family:sans-serif;padding:24px;color:#6b7280}</style><p>Tab ditutup.</p>'),
+    ()=>{ location.href = EXIT_FALLBACK_URL; }
+  ];
+  let i = 0;
+  (function tryClose(){
+    if (document.visibilityState === 'hidden') return; // tab sudah hilang
+    if (i < attempts.length){
+      setTimeout(()=>{ try{ attempts[i++](); } finally{ tryClose(); } }, 80);
+    }
+  })();
 }
+
+/* handler sukses vs error */
 function showLoading(on=true){ loadingPop.classList.toggle('show', on); }
 function setErrorCloseOnly(){
   resultActions.style.display = 'none';
@@ -218,8 +242,9 @@ function setErrorCloseOnly(){
 function setSuccessActions(){
   resultActions.style.display = '';
   resultClose.classList.add('hidden');
-  btnKeluar.onclick = exitApp;
+  btnKeluar.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); exitApp(); };
 }
+
 function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
   if (type==='success'){
     resultIcon.innerHTML =
