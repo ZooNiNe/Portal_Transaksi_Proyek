@@ -1,4 +1,4 @@
-// URL Web App GAS
+// URL Web App GAS (sudah /exec)
 const scriptURL = 'https://script.google.com/macros/s/AKfycbyAOVy2t6K03MoMreSP82OuXGUa_NbiA4JlTp3Sq2rm-KlKb1QLIOP7TyBy98raAAj2Pg/exec';
 
 // ====== Elemen langkah ======
@@ -10,9 +10,7 @@ const step3 = document.getElementById('step3');
 const penginputSel = document.getElementById('penginput');
 const jenisSel = document.getElementById('jenis');
 const kategoriAwalSel = document.getElementById('kategoriAwal');
-document.getElementById('toStep2').addEventListener('click', () => {
-  go(2);
-});
+document.getElementById('toStep2').addEventListener('click', () => { go(2); });
 
 // Step2 controls
 const tanggal = document.getElementById('tanggal');
@@ -72,13 +70,13 @@ pvBack.addEventListener('click',()=>showPv(1));
 pvNext.addEventListener('click',()=>showPv(2));
 
 function showPv(n){
-  const to1 = (n===1);
-  pvStep1.classList.toggle('active', to1);
-  pvStep2.classList.toggle('active', !to1);
-  pvTab1.classList.toggle('active', to1);
-  pvTab2.classList.toggle('active', !to1);
-  pvBack.classList.toggle('hidden', to1);
-  pvNext.classList.toggle('hidden', !to1);
+  const isOne = (n===1);
+  pvStep1.classList.toggle('active', isOne);
+  pvStep2.classList.toggle('active', !isOne);
+  pvTab1.classList.toggle('active', isOne);
+  pvTab2.classList.toggle('active', !isOne);
+  pvBack.classList.toggle('hidden', isOne);
+  pvNext.classList.toggle('hidden', !isOne);
 }
 
 // State global
@@ -141,7 +139,6 @@ function filesForPreview(){
 }
 
 function openPreview(){
-  // kreditor lain
   const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
   if (kreditor.value==='__OTHER__' && !kreditorFinal){ showToast('Isi Kreditor/Supplier.', 'error'); kreditorLain.focus(); return; }
 
@@ -239,27 +236,41 @@ function sendData(){
   }
 
   Promise.all(readers)
-  .then(()=> fetch(scriptURL, { method:'POST', body: JSON.stringify(payload) }))
-  .then(r=> r.json())
-  .then(data=>{
-    if (data.status==='ok'){
-      showToast('Tersimpan. ID: ' + data.id, 'success', 4000);
-      // reset minimal
-      ['buktiBon','buktiSJ','buktiUmum'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-      [tanggal,uraian,nominal].forEach(el=>el.value='');
-      kreditor.value='Toko Bangunan A'; kreditorLain.value=''; kreditorLain.classList.add('hidden');
-      statusSel.value='Sudah Dibayar';
+    .then(()=>{
+      // timeout & simple request (hindari preflight)
+      const controller = new AbortController();
+      const t = setTimeout(()=>controller.abort(), 25000);
+      return fetch(scriptURL, {
+        method:'POST',
+        headers:{ 'Content-Type':'text/plain;charset=UTF-8' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      }).finally(()=>clearTimeout(t));
+    })
+    .then(r=>{
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(data=>{
+      if (data.status==='ok'){
+        showToast('Tersimpan. ID: ' + data.id, 'success', 4000);
+        // reset minimal
+        ['buktiBon','buktiSJ','buktiUmum'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+        [tanggal,uraian,nominal].forEach(el=>el.value='');
+        kreditor.value='Toko Bangunan A'; kreditorLain.value=''; kreditorLain.classList.add('hidden');
+        statusSel.value='Sudah Dibayar';
 
-      // auto-return ke Landing 1 (input batch)
-      step3.classList.add('hidden'); step2.classList.add('hidden'); step1.classList.remove('hidden');
-      // reset step1 ke default pertama
-      // (dropdown tanpa placeholder; biarkan nilai pertama)
-    } else {
-      showToast(data.error || 'Gagal simpan.', 'error');
-    }
-  })
-  .catch(err=>{
-    console.error(err);
-    showToast('Terjadi kesalahan: ' + err.message, 'error');
-  });
+        // auto-return ke Landing 1
+        step3.classList.add('hidden'); step2.classList.add('hidden'); step1.classList.remove('hidden');
+      } else {
+        throw new Error(data.error || 'Gagal simpan');
+      }
+    })
+    .catch(err=>{
+      const msg = (err.name === 'AbortError')
+        ? 'Koneksi lambat. Coba lagi (maks 25 dtk).'
+        : (String(err).includes('Failed to fetch') ? 'Gagal terhubung ke server.' : err.message);
+      showToast('Terjadi kesalahan: ' + msg, 'error');
+      console.error(err);
+    });
 }

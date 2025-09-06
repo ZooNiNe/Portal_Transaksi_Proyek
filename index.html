@@ -49,8 +49,7 @@
                 <option value="Material">Material</option>
                 <option value="Upah">Upah</option>
                 <option value="Operasional">Operasional</option>
-                <option value="Lainnya">Lainnya</option>
-            </select>
+                <option value="Lainnya">Lainnya</option>            </select>
           </div>
 
           <button id="toStep2" class="submit-btn wide">Masuk</button>
@@ -79,9 +78,7 @@
           <select id="proyek" required>
             <option value="Proyek Utama(Pembangunan Dapur)">Proyek Utama(Pembangunan Dapur)</option>
             <option value="Proyek Pembenahan Lahan">Proyek Pembenahan Lahan</option>
-            <option value="Proyek Lainnya">Proyek Lainnya</option>
-
-          </select>
+            <option value="Proyek Lainnya">Proyek Lainnya</option>          </select>
         </div>
 
         <div class="form-group">
@@ -100,7 +97,8 @@
             <option value="CV Alam Berkah Abadi">CV Alam Berkah Abadi</option>
             <option value="TB Berkah Naufal">TB Berkah Naufal</option>
             <option value="CV Sari Doa (Cilawang)">CV Sari Doa (Cilawang)</option>
-            <option value="Galian Batu Pareang (Haji Agus)">Galian Batu Pareang (Haji Agus)</option>
+            <option value="Galian Batu Pareang (Haji Agus)">Galian Batu Pareang (Haji Agus)</option>            
+            <option value="Warung Agil">Warung Agil</option>
             <option value="__OTHER__">Lainnya… (ketik sendiri)</option>
           </select>
           <input type="text" id="kreditorLain" class="hidden" placeholder="Tulis nama Kreditor/Supplier"/>
@@ -130,7 +128,7 @@
         <h2 class="landing-title">Lampiran Bukti</h2>
         <p class="landing-subtitle">Unggah bukti sesuai kebutuhan</p>
 
-        <!-- Kondisional -->
+        <!-- Muncul hanya jika Kategori=Material & Jenis=Pengeluaran -->
         <div id="wrapBon" class="form-group hidden">
           <label for="buktiBon">Bukti Bon (Invoice)</label>
           <input type="file" id="buktiBon" accept="image/*,application/pdf" multiple/>
@@ -141,6 +139,7 @@
           <input type="file" id="buktiSJ" accept="image/*,application/pdf" multiple/>
         </div>
 
+        <!-- Default untuk kondisi lain -->
         <div id="wrapBuktiUmum" class="form-group hidden">
           <label for="buktiUmum">Bukti Transaksi</label>
           <input type="file" id="buktiUmum" accept="image/*,application/pdf" multiple/>
@@ -156,7 +155,7 @@
 
   <!-- ===== MODAL PREVIEW (2-step + scroll + sticky) ===== -->
   <div class="modal-backdrop" id="previewModal">
-    <div class="modal-content light">
+    <div class="modal-content">
       <h3>Konfirmasi Data</h3>
       <p>Periksa kembali sebelum mengirim.</p>
 
