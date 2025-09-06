@@ -11,7 +11,10 @@ const step3 = document.getElementById('step3');
 const penginputSel = document.getElementById('penginput');
 const jenisSel = document.getElementById('jenis');
 const kategoriAwalSel = document.getElementById('kategoriAwal');
-document.getElementById('toStep2').addEventListener('click', () => { go(2); });
+
+const goto2 = (e)=>{ e && e.preventDefault && e.preventDefault(); go(2); };
+document.getElementById('toStep2').addEventListener('click', goto2);
+document.getElementById('toStep2').addEventListener('touchend', goto2, {passive:false});
 
 /* Step2 */
 const tanggal = document.getElementById('tanggal');
@@ -101,7 +104,6 @@ function prepareUploadSection(){
 }
 
 /* ===== Result pop (juga untuk validasi) ===== */
-let resultMode = 'success'; // 'success' | 'error'
 function quickPop(message){
   showResult('error','Terjadi Kesalahan', message || 'Periksa kembali input anda.', {onlyDismiss:true});
   return false;
@@ -204,15 +206,11 @@ btnInputKembali.addEventListener('click', ()=>{
 });
 
 function exitApp(){
-  // Keluar dari TAB (bukan seluruh browser)
   window.open('', '_self'); window.close();
   setTimeout(()=>{ if (document.visibilityState !== 'hidden'){ location.replace(EXIT_FALLBACK_URL); } }, 80);
 }
-
 function showLoading(on=true){ loadingPop.classList.toggle('show', on); }
-
 function setErrorCloseOnly(){
-  // tombol Keluar/Input Kembali disembunyikan; muncul ikon close
   resultActions.style.display = 'none';
   resultClose.classList.remove('hidden');
   resultClose.onclick = ()=> resultPop.classList.remove('show');
@@ -220,9 +218,8 @@ function setErrorCloseOnly(){
 function setSuccessActions(){
   resultActions.style.display = '';
   resultClose.classList.add('hidden');
-  btnKeluar.onclick = exitApp; // keluar tab
+  btnKeluar.onclick = exitApp;
 }
-
 function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
   if (type==='success'){
     resultIcon.innerHTML =
@@ -322,7 +319,7 @@ function sendData(){
     });
 }
 
-/* ===== Picker modal untuk semua dropdown ===== */
+/* ===== Picker modal (dropdown) ===== */
 const pickerPop = document.getElementById('pickerPop');
 const pickerTitle = document.getElementById('pickerTitle');
 const pickerList  = document.getElementById('pickerList');
@@ -349,7 +346,7 @@ function openPicker(selectEl, btn){
   pickerPop.classList.add('show');
 }
 
-/* Enhance semua select → tombol + picker (mobile-safe) */
+/* Enhance semua select → tombol + picker */
 function initNiceSelects(){
   document.querySelectorAll('select[data-nice]').forEach((sel)=>{
     if (sel.dataset.enhanced) return;
@@ -372,8 +369,7 @@ function initNiceSelects(){
 
     const open = (e)=>{ e.preventDefault(); openPicker(sel, btn); };
     btn.addEventListener('click', open);
-    // wajib untuk mobile agar tidak pernah memicu native select
-    btn.addEventListener('touchstart', open, {passive:false});
+    btn.addEventListener('touchstart', open, {passive:false}); // pastikan mobile tidak memunculkan native
   });
 }
 document.addEventListener('DOMContentLoaded', initNiceSelects);
