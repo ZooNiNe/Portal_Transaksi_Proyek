@@ -13,7 +13,7 @@
 
   <!-- ===== LANDING 1 ===== -->
   <section class="landing bg1" id="step1">
-    <div class="overlay"></div>
+    <div class="overlay" aria-hidden="true"></div>
     <div class="landing-inner">
       <div class="logo-row landing-logos">
         <img src="logo1.png" alt="Logo 1" class="logo-3"/>
@@ -53,7 +53,8 @@
             </select>
           </div>
 
-          <button id="toStep2" class="submit-btn wide">Masuk</button>
+          <!-- type="button" + id tetap -->
+          <button id="toStep2" class="submit-btn wide" type="button">Masuk</button>
         </div>
       </div>
 
@@ -63,7 +64,7 @@
 
   <!-- ===== LANDING 2 ===== -->
   <section class="landing bg2 hidden" id="step2">
-    <div class="overlay"></div>
+    <div class="overlay" aria-hidden="true"></div>
     <div class="landing-inner">
       <div class="landing-card form-card">
         <h2 class="landing-title">Data Transaksi</h2>
@@ -115,8 +116,8 @@
         </div>
 
         <div class="btn-row">
-          <button id="backTo1" class="btn-outline">Kembali</button>
-          <button id="toStep3" class="submit-btn">Lanjut ke Upload</button>
+          <button id="backTo1" class="btn-outline" type="button">Kembali</button>
+          <button id="toStep3" class="submit-btn" type="button">Lanjut ke Upload</button>
         </div>
       </div>
     </div>
@@ -124,7 +125,7 @@
 
   <!-- ===== LANDING 3 ===== -->
   <section class="landing bg3 hidden" id="step3">
-    <div class="overlay"></div>
+    <div class="overlay" aria-hidden="true"></div>
     <div class="landing-inner">
       <div class="landing-card form-card">
         <h2 class="landing-title">Lampiran Bukti</h2>
@@ -146,22 +147,22 @@
         </div>
 
         <div class="btn-row">
-          <button id="backTo2" class="btn-outline">Kembali</button>
-          <button id="openPreview" class="submit-btn">Kirim</button>
+          <button id="backTo2" class="btn-outline" type="button">Kembali</button>
+          <button id="openPreview" class="submit-btn" type="button">Kirim</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ===== MODAL PREVIEW ===== -->
+  <!-- ===== PREVIEW ===== -->
   <div class="modal-backdrop" id="previewModal">
     <div class="modal-content">
       <h3>Konfirmasi Data</h3>
       <p>Periksa kembali sebelum mengirim.</p>
 
       <div class="pv-steps">
-        <button id="pvTab1" class="pv-tab active">Ringkasan</button>
-        <button id="pvTab2" class="pv-tab">Lampiran</button>
+        <button id="pvTab1" class="pv-tab active" type="button">Ringkasan</button>
+        <button id="pvTab2" class="pv-tab" type="button">Lampiran</button>
       </div>
 
       <div class="preview-scroll pv-pane active" id="pvStep1">
@@ -197,7 +198,7 @@
     </div>
   </div>
 
-  <!-- ===== LOADING POPUP ===== -->
+  <!-- ===== LOADING ===== -->
   <div class="overlay-pop" id="loadingPop" aria-hidden="true">
     <div class="pop-card">
       <div class="spinner"></div>
@@ -206,12 +207,10 @@
     </div>
   </div>
 
-  <!-- ===== RESULT POPUP ===== -->
+  <!-- ===== RESULT (error/sukses) ===== -->
   <div class="overlay-pop" id="resultPop" aria-hidden="true">
     <div class="pop-card" id="resultCard">
-      <!-- close chip untuk ERROR -->
       <button type="button" class="close-chip hidden" id="resultClose" aria-label="Tutup"></button>
-
       <div id="resultIcon"></div>
       <h4 id="resultTitle">Selesai</h4>
       <p id="resultMsg">Data anda telah terinput.</p>
@@ -222,7 +221,7 @@
     </div>
   </div>
 
-  <!-- ===== PICKER POPUP (dropdown modal) ===== -->
+  <!-- ===== PICKER (dropdown modal) ===== -->
   <div class="overlay-pop" id="pickerPop" aria-hidden="true">
     <div class="pop-card picker-card">
       <h4 id="pickerTitle">Pilih Opsi</h4>
