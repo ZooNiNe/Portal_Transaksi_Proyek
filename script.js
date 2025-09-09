@@ -1,711 +1,452 @@
-/***** ==================== KONFIG GLOBAL ==================== *****/
-const scriptURL = 'https://script.google.com/macros/s/AKfycbzgod3bBBFmKBqlgyW_4oPUkCTUsaqznDV-JxPPNSac7BtTbOaMSZoBN-Y_WGaDeFj9sQ/exec';
-const EXIT_FALLBACK_URL = 'about:blank';
+"use strict";
+
+/* ================== KONFIG ================== */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzgod3bBBFmKBqlgyW_4oPUkCTUsaqznDV-JxPPNSac7BtTbOaMSZoBN-Y_WGaDeFj9sQ/exec"; // ganti dengan URL Web App GAS
 const ONE_MB = 1024 * 1024;
-const MAX_EACH_MB = 5;
-const ALLOWED_MIME_PREFIX = ['image/', 'application/pdf'];
+const MAX_MB_EACH = 5;
+const ALLOWED_TYPES = ["image/", "application/pdf"];
 
-/***** ==================== ELEM SECTION (AMAN JIKA TIDAK ADA) ==================== *****/
-const home   = document.getElementById('home');   // dashboard (opsional)
-const step1  = document.getElementById('step1');  // landing 1
-const step2  = document.getElementById('step2');  // landing 2
-const step3  = document.getElementById('step3');  // landing 3
+/* ================== UTIL ================== */
+const $ = (s, p = document) => p.querySelector(s);
+const $$ = (s, p = document) => [...p.querySelectorAll(s)];
+const on = (el, ev, fn, opt) => el && el.addEventListener(ev, fn, opt);
+const fmtIDR = (n) => {
+  const v = (typeof n === "number" ? n : String(n).replace(/[^\d-]/g, "")) || 0;
+  return "Rp " + Number(v).toLocaleString("id-ID");
+};
+const onlyNum = (s) => String(s || "").replace(/[^\d]/g, "");
+const debounce = (fn, ms = 300) => {
+  let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+};
+const pad = (n, len = 3) => String(n).padStart(len, "0");
 
-/***** ==================== DASHBOARD (OPSIONAL) ==================== *****/
-const dashCards  = document.getElementById('dash-cards');
-const chartCanv  = document.getElementById('chartPengeluaran');
-const btnRefresh = document.getElementById('btnRefresh');
-const btnGotoInput = document.getElementById('gotoInput');
+/* ================== NAV / ROLE ================== */
+const secHome   = $("#homeSec");
+const secStep1  = $("#step1");
+const secStep2  = $("#step2");
+const secStep3  = $("#step3");
+const secRekap  = $("#rekapSec");
+const secAkun   = $("#akunSec");
+const sections = {homeSec:secHome, step1:secStep1, step2:secStep2, step3:secStep3, rekapSec:secRekap, akunSec:secAkun};
 
-if (btnGotoInput) btnGotoInput.addEventListener('click', ()=>go(1));
-if (btnRefresh) btnRefresh.addEventListener('click', loadDashboard);
-
-let chartPengeluaran;
-function loadDashboard(){
-  if (!dashCards) return;
-  fetch(`${scriptURL}?action=dashboard.summary`, {method:'GET'})
-    .then(r=>r.json())
-    .then(d=>{
-      const items = [
-        {label:'Total Pendapatan', val: d.totalPendapatan ?? '-'},
-        {label:'Biaya Material',   val: d.totalMaterial ?? '-'},
-        {label:'Biaya Gaji',       val: d.totalGaji ?? '-'},
-        {label:'Kas Saat Ini',     val: d.kas ?? '-'},
-        {label:'Estimasi Bersih',  val: d.estimasi ?? '-'},
-      ];
-      dashCards.innerHTML = items.map(it=>{
-        return `
-          <div class="kpi">
-            <div class="label">${it.label}</div>
-            <div class="val">${formatIDR(it.val)}</div>
-          </div>`;
-      }).join('');
-
-      if (chartCanv && window.Chart){
-        if (chartPengeluaran) chartPengeluaran.destroy();
-        const labels = d.chart?.labels || [];
-        const values = d.chart?.values || [];
-        chartPengeluaran = new Chart(chartCanv, {
-          type:'bar',
-          data:{
-            labels,
-            datasets:[{label:'Pengeluaran', data: values}]
-          },
-          options:{ responsive:true, maintainAspectRatio:false }
-        });
-      }
-    })
-    .catch(console.error);
+function showSection(id){
+  Object.values(sections).forEach(s => s.classList.add("hidden"));
+  (sections[id]||secHome).classList.remove("hidden");
+  window.scrollTo({top:0,behavior:"smooth"});
 }
-document.addEventListener('DOMContentLoaded', loadDashboard);
-
-/***** ==================== STEP 1 ==================== *****/
-const penginputSel   = document.getElementById('penginput');
-const jenisSel       = document.getElementById('jenis');
-const kategoriAwalSel= document.getElementById('kategoriAwal');
-
-const btnToStep2 = document.getElementById('toStep2');
-if (btnToStep2){
-  const goto2 = (e)=>{ e.preventDefault(); go(2); };
-  btnToStep2.addEventListener('click', goto2);
-  btnToStep2.addEventListener('touchend', goto2, {passive:false});
-}
-
-/***** ==================== STEP 2 ==================== *****/
-const tanggal  = document.getElementById('tanggal');
-const proyek   = document.getElementById('proyek');
-
-const wrapUraian = document.getElementById('wrapUraian');
-const uraian   = document.getElementById('uraian');
-
-const nominal  = document.getElementById('nominal');      // akan disembunyikan pada Material
-const kreditor = document.getElementById('kreditor');
-const kreditorLain = document.getElementById('kreditorLain');
-const statusSel= document.getElementById('status');
-
-/* ======= BLOK MATERIAL: FAKTUR GLOBAL + MULTI ITEM ======= */
-const materialBlock = document.getElementById('materialBlock'); // container
-const noFaktur      = document.getElementById('noFaktur');      // auto dari server
-const itemsWrap     = document.getElementById('itemsWrap');     // container list item
-const btnAddItem    = document.getElementById('btnAddItem');
-const btnPrevItem   = document.getElementById('btnPrevItem');   // opsional (kembali)
-const fakturTotalEl = document.getElementById('fakturTotal');   // total faktur
-
-// item template referensi (input kecil) — ID dinamis
-function newItemRow(idx){
-  const row = document.createElement('div');
-  row.className = 'item-row';
-  row.dataset.idx = String(idx);
-  row.innerHTML = `
-    <input class="input small" type="text"  placeholder="Nama barang" data-role="nama"/>
-    <input class="input small" type="text"  placeholder="Harga satuan" inputmode="numeric" data-role="harga"/>
-    <input class="input small" type="number" placeholder="Qty" min="0" step="1" data-role="qty"/>
-    <input class="input small" type="text"  placeholder="Total" data-role="total" disabled/>
-    <button class="del" type="button" title="Hapus">×</button>
-  `;
-  const hargaEl = row.querySelector('[data-role="harga"]');
-  const qtyEl   = row.querySelector('[data-role="qty"]');
-  const totalEl = row.querySelector('[data-role="total"]');
-  const delBtn  = row.querySelector('.del');
-
-  const recalc = ()=>{
-    hargaEl.value = toIDR(hargaEl.value);
-    const hs = parseInt((hargaEl.value||'').replace(/\./g,''))||0;
-    const q  = parseInt(qtyEl.value||0);
-    const t  = hs * q;
-    totalEl.value = t ? toIDR(String(t)) : '';
-    recalcFakturTotal();
-  };
-
-  hargaEl.addEventListener('input', recalc);
-  qtyEl.addEventListener('input', recalc);
-  delBtn.addEventListener('click', ()=>{
-    row.remove();
-    recalcFakturTotal();
-  });
-
-  return row;
-}
-
-function addItemRow(){
-  const idx = (itemsWrap?.children.length || 0) + 1;
-  itemsWrap.appendChild(newItemRow(idx));
-  recalcFakturTotal();
-}
-
-function getAllItems(){
-  const out = [];
-  if (!itemsWrap) return out;
-  [...itemsWrap.children].forEach(row=>{
-    const nama  = row.querySelector('[data-role="nama"]')?.value?.trim() || '';
-    const harga = row.querySelector('[data-role="harga"]')?.value || '';
-    const qty   = row.querySelector('[data-role="qty"]')?.value || '0';
-    const total = row.querySelector('[data-role="total"]')?.value || '';
-    if (!nama && !harga && !qty) return;
-    out.push({
-      nama,
-      hargaSatuan: (harga||'').replace(/\./g,''),
-      qty: parseInt(qty||0),
-      total: (total||'').replace(/\./g,'')
-    });
-  });
-  return out;
-}
-
-function recalcFakturTotal(){
-  const items = getAllItems();
-  const sum = items.reduce((a,c)=> a + (parseInt(c.total||0) || (parseInt(c.hargaSatuan||0)* (c.qty||0))), 0);
-  if (fakturTotalEl) fakturTotalEl.textContent = sum ? 'Rp ' + toIDR(String(sum)) : 'Rp 0';
-  // sinkron ke nominal (kolom nominal disembunyikan untuk material)
-  if (nominal) nominal.value = sum ? toIDR(String(sum)) : '';
-}
-
-if (btnAddItem)  btnAddItem.addEventListener('click', (e)=>{ e.preventDefault(); addItemRow(); });
-if (btnPrevItem) btnPrevItem.addEventListener('click', (e)=>{ e.preventDefault(); /* opsional: navigasi back antar langkah item */ });
-
-/* ======= FAKTUR GLOBAL AUTO-NUMBER ======= */
-async function ensureNoFaktur(){
-  try{
-    const res = await fetch(`${scriptURL}?action=getNoFaktur.counter`, {method:'GET'});
-    const js  = await res.json();
-    if (noFaktur && js?.noFaktur) {
-      noFaktur.value = js.noFaktur;
-      noFaktur.readOnly = true;
-    }
-  }catch(e){ console.warn('Gagal ambil nomor faktur:', e); }
-}
-
-/* ======= TOGGLE MODE MATERIAL vs UMUM ======= */
-function toggleMaterialBlock(){
-  const isMaterial = (kategoriAwalSel?.value === 'Material' && jenisSel?.value === 'Pengeluaran');
-  if (materialBlock) materialBlock.classList.toggle('hidden', !isMaterial);
-  if (wrapUraian)    wrapUraian.classList.toggle('hidden', isMaterial);
-  if (nominal)       nominal.parentElement?.classList.toggle('hidden', isMaterial); // nominal di-hide kalau material
-  if (isMaterial){
-    // jika belum ada baris, tambah 1
-    if (itemsWrap && itemsWrap.children.length === 0) addItemRow();
-    ensureNoFaktur();
-  }
-}
-if (jenisSel) jenisSel.addEventListener('change', toggleMaterialBlock);
-if (kategoriAwalSel) kategoriAwalSel.addEventListener('change', toggleMaterialBlock);
-
-/* ======= KREDITOR LAINNYA ======= */
-if (kreditor) {
-  kreditor.addEventListener('change', ()=>{
-    if (kreditor.value === '__OTHER__'){
-      kreditorLain?.classList.remove('hidden');
-      kreditorLain?.focus();
-    } else {
-      kreditorLain?.classList.add('hidden');
-      if (kreditorLain) kreditorLain.value = '';
-    }
-  });
-}
-
-/* ======= FORMAT RUPIAH ======= */
-function toIDR(v){ return (v||'').toString().replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
-function formatIDR(n){
-  if (n===null || n===undefined || n==='') return '-';
-  const num = Number(String(n).replace(/[^\d\-]/g,'')) || 0;
-  return 'Rp ' + num.toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-}
-if (nominal) nominal.addEventListener('input', ()=> nominal.value = toIDR(nominal.value));
-
-/* ======= NAV STEP ======= */
-const STATE = { penginput:'', jenis:'', kategori:'' };
-
-function go(n){
-  if (home)  home.classList.toggle('hidden', n !== 0);
-  if (step1) step1.classList.toggle('hidden', n !== 1);
-  if (step2) step2.classList.toggle('hidden', n !== 2);
-  if (step3) step3.classList.toggle('hidden', n !== 3);
-
-  if (n===1) window.scrollTo({top:0, behavior:'smooth'});
-  if (n===2){
-    // capture state & siapkan UI
-    if (penginputSel)   STATE.penginput = penginputSel.value;
-    if (jenisSel)       STATE.jenis     = jenisSel.value;
-    if (kategoriAwalSel)STATE.kategori  = kategoriAwalSel.value;
-    toggleMaterialBlock();
-  }
-}
-document.addEventListener('DOMContentLoaded', ()=>{ if (home) go(0); });
-
-/***** ==================== STEP 2 → STEP 3 VALIDASI ==================== *****/
-const btnBackTo1 = document.getElementById('backTo1');
-const btnToStep3 = document.getElementById('toStep3');
-if (btnBackTo1) btnBackTo1.addEventListener('click',(e)=>{ e.preventDefault(); go(1); });
-if (btnToStep3) btnToStep3.addEventListener('click',(e)=>{
-  e.preventDefault();
-  if (!tanggal?.value) return quickPop('Isi Tanggal.');
-  if (!proyek?.value)  return quickPop('Pilih Proyek.');
-
-  const isMat = (kategoriAwalSel?.value==='Material' && jenisSel?.value==='Pengeluaran');
-  if (isMat){
-    if (!noFaktur?.value) return quickPop('Nomor Faktur belum tersedia.');
-    const items = getAllItems();
-    if (items.length === 0) return quickPop('Tambahkan minimal 1 item material.');
-    const adaKosong = items.some(it => !it.nama || !it.hargaSatuan || !it.qty);
-    if (adaKosong) return quickPop('Nama/Harga/Qty item belum lengkap.');
-    // nominal otomatis dari total
-    recalcFakturTotal();
-  }else{
-    if (!uraian?.value) return quickPop('Isi Uraian.');
-    if (!nominal?.value) return quickPop('Isi Nominal.');
-  }
-  prepareUploadSection();
-  go(3);
+$$(".top-tabs .tab-btn, .goBtn, .segmen-shortcuts .chip").forEach(btn=>{
+  on(btn, "click", (e)=>{
+    const go = btn.dataset.go;
+    if (go) showSection(go);
+    const seg = btn.dataset.seg;
+    if (go==="rekapSec" && seg) { $("#rekapJenis").value = seg; }
+  }, {passive:true});
 });
+on($("#gotoInput"), "click", ()=> showSection("step1"), {passive:true});
 
-/***** ==================== STEP 3 (UPLOAD) ==================== *****/
-const wrapBon  = document.getElementById('wrapBon');
-const wrapSJ   = document.getElementById('wrapSJ');
-const wrapUmum = document.getElementById('wrapBuktiUmum');
-
-const btnBackTo2 = document.getElementById('backTo2');
-const btnOpenPreview = document.getElementById('openPreview');
-if (btnBackTo2) btnBackTo2.addEventListener('click',(e)=>{ e.preventDefault(); go(2); });
-if (btnOpenPreview) btnOpenPreview.addEventListener('click', openPreview);
-
-function prepareUploadSection(){
-  const isMatPeng = (kategoriAwalSel?.value==='Material' && jenisSel?.value==='Pengeluaran');
-  if (wrapBon)  wrapBon.classList.toggle('hidden', !isMatPeng);
-  if (wrapSJ)   wrapSJ.classList.toggle('hidden', !isMatPeng);
-  if (wrapUmum) wrapUmum.classList.toggle('hidden', isMatPeng);
+/* Simulasi-Role (front-end only; RBAC asli di backend) */
+const roleName = $("#roleName");
+const whoAmI = $("#whoAmI");
+const btnSimulasiLogin = $("#btnSimulasiLogin");
+const ROLES = {
+  admin: {label:"Admin Keuangan & Proyek", email:"dq060412@gmail.com"},
+  ops:   {label:"Input Operasional", email:"irpan100802@gmail.com"},
+  mat:   {label:"Input Material", email:"alfauzi170701@gmail.com"},
+  audit: {label:"Auditor", email:"dikiabdurahman222@gmail.com"}
+};
+let CURRENT_ROLE = "admin"; // default
+function applyRole(){
+  const r = ROLES[CURRENT_ROLE];
+  roleName.textContent = r ? r.label : "—";
+  whoAmI.innerHTML = `<div>Email: <b>${r.email}</b></div><div>Role: <b>${r.label}</b></div>`;
+  // hide tombol input jika auditor
+  const isAudit = CURRENT_ROLE === "audit";
+  $("#gotoInput").style.display = isAudit ? "none" : "";
+  $$("#step1 .btn.primary").forEach(b => b.disabled = isAudit);
 }
+on(btnSimulasiLogin, "click", ()=>{
+  const keys = Object.keys(ROLES);
+  const i = (keys.indexOf(CURRENT_ROLE)+1) % keys.length;
+  CURRENT_ROLE = keys[i]; applyRole();
+}, {passive:true});
+applyRole();
 
-/***** ==================== PREVIEW MODAL (2 TAB) ==================== *****/
-const previewModal = document.getElementById('previewModal');
-const cancelBtn    = document.getElementById('cancel-btn');
-const confirmBtn   = document.getElementById('confirm-btn');
+/* ================== DASHBOARD ================== */
+const btnRefresh = $("#btnRefresh");
+const statBoxes = $("#statBoxes");
+const qGlobal = $("#qGlobal");
+const btnSearch = $("#btnSearch");
+const chartCanvas = $("#chartFlow");
+let chartFlow;
 
-if (cancelBtn)  cancelBtn.addEventListener('click', ()=> previewModal?.classList.remove('active'));
-if (confirmBtn) confirmBtn.addEventListener('click', sendData);
-
-const pvStep1 = document.getElementById('pvStep1');
-const pvStep2 = document.getElementById('pvStep2');
-const pvTab1  = document.getElementById('pvTab1');
-const pvTab2  = document.getElementById('pvTab2');
-const pvBack  = document.getElementById('pvBack');
-const pvNext  = document.getElementById('pvNext');
-
-if (pvTab1) pvTab1.addEventListener('click', ()=>showPv(1));
-if (pvTab2) pvTab2.addEventListener('click', ()=>showPv(2));
-if (pvBack) pvBack.addEventListener('click', ()=>showPv(1));
-if (pvNext) pvNext.addEventListener('click', ()=>showPv(2));
-
-function showPv(n){
-  const isOne = (n===1);
-  pvStep1?.classList.toggle('active', isOne);
-  pvStep2?.classList.toggle('active', !isOne);
-  pvTab1?.classList.toggle('active', isOne);
-  pvTab2?.classList.toggle('active', !isOne);
-  pvBack?.classList.toggle('hidden', isOne);
-  pvNext?.classList.toggle('hidden', !isOne);
+function paintStats(d){
+  const map = [
+    {label:"Saldo Hari Ini", val:d.todaySaldo||0},
+    {label:"Tagihan Hari Ini", val:d.todayTagihan||0},
+    {label:"Pengeluaran Hari Ini", val:d.todayOut||0},
+    {label:"Total Utang Saat Ini", val:d.totalUtang||0},
+    {label:"Total Tagihan Saat Ini", val:d.totalTagihan||0}
+  ];
+  statBoxes.innerHTML = map.map(x => (
+    `<div class="stat"><div class="label">${x.label}</div><div class="val">${fmtIDR(x.val)}</div></div>`
+  )).join("");
 }
-
-function setText(id, v){ const el = document.getElementById(id); if (el) el.textContent = v || '-'; }
-
-function fileListForPreview(){
-  const isMat = (kategoriAwalSel?.value==='Material' && jenisSel?.value==='Pengeluaran');
-  if (isMat){
-    return [
-      ...(document.getElementById('buktiBon')?.files || []),
-      ...(document.getElementById('buktiSJ')?.files || [])
-    ];
-  } else {
-    return [ ...(document.getElementById('buktiUmum')?.files || []) ];
-  }
+function makeChart(data){
+  if (!window.Chart) return;
+  if (chartFlow) chartFlow.destroy();
+  chartFlow = new Chart(chartCanvas, {
+    type:"line",
+    data:{ labels:data.labels||[], datasets:[
+      {label:"Pemasukan", data:data.in||[], tension:.25, borderWidth:2},
+      {label:"Pengeluaran", data:data.out||[], tension:.25, borderWidth:2}
+    ]},
+    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:true}}}
+  });
 }
+async function loadDashboard(){
+  try{
+    const r = await fetch(`${SCRIPT_URL}?action=dashboard`, {method:"GET"});
+    const d = await r.json();
+    paintStats(d);
+    makeChart(d.chart||{labels:[],in:[],out:[]});
+    renderQuickTags(d.quickTags||[]);
+    renderPrio(d.prioritas||[]);
+  }catch(e){ console.error(e); }
+}
+function renderQuickTags(tags){
+  const box = $("#quickTags");
+  box.innerHTML = tags.map(t=>`<button class="chip" data-q="${t}">${t}</button>`).join("");
+  $$("#quickTags .chip").forEach(ch => on(ch,"click",()=>{ qGlobal.value = ch.dataset.q; doSearch(); }, {passive:true}));
+}
+function renderPrio(items){
+  const el = $("#prioList");
+  if (!items.length){ el.innerHTML = `<div class="muted">Belum ada prioritas.</div>`; return; }
+  el.innerHTML = items.map(it=>`<div>• ${it}</div>`).join("");
+}
+const doSearch = debounce(async ()=>{
+  const q = qGlobal.value.trim();
+  if (!q) return;
+  try{
+    const r = await fetch(`${SCRIPT_URL}?action=search&q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    // tampilkan minimal jumlah hasil
+    alert(`Ditemukan ${d.total||0} transaksi terkait "${q}"`);
+  }catch(e){ console.error(e); }
+}, 350);
+on(btnSearch, "click", doSearch);
+on(qGlobal, "input", debounce(()=>{ /* live hint (opsional) */ }, 250));
+on(btnRefresh, "click", loadDashboard, {passive:true});
+on($("#applyRange"), "click", loadDashboard, {passive:true});
+/* lazy inisiasi chart saat terlihat */
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach(en=>{
+    if(en.isIntersecting){ loadDashboard(); io.disconnect(); }
+  });
+}, {root:null, threshold:.2});
+io.observe(chartCanvas);
 
-function validateFileList(fileList, label){
-  const files = [...(fileList||[])];
-  for (const f of files){
-    const okType = ALLOWED_MIME_PREFIX.some(p => (f.type||'').startsWith(p));
-    const okSize = f.size <= MAX_EACH_MB * ONE_MB;
-    if (!okType) return quickPop(`${label}: ${f.name} bertipe tidak didukung.`);
-    if (!okSize) return quickPop(`${label}: ${f.name} > ${MAX_EACH_MB}MB.`);
+/* ================== INPUT FLOW (Material-first) ================== */
+// STEP1 → STEP2
+const toStep2Btn = $("#toStep2");
+on(toStep2Btn, "click", (e)=>{ e.preventDefault(); showSection("step2"); });
+
+// elemen Step2
+const penginputSel = $("#penginput");
+const jenisSel = $("#jenis");
+const kategoriSel = $("#kategoriAwal");
+const tanggal = $("#tanggal");
+const proyek = $("#proyek");
+const noFaktur = $("#noFaktur");
+const kreditor = $("#kreditor");
+const kreditorLain = $("#kreditorLain");
+const statusSel = $("#status");
+
+const namaBarang = $("#namaBarang");
+const hargaSatuan = $("#hargaSatuan");
+const qty = $("#qty");
+const addItem = $("#addItem");
+const itemsWrap = $("#itemsWrap");
+const grandTotal = $("#grandTotal");
+
+let ITEMS = [];
+function refreshItems(){
+  itemsWrap.innerHTML = ITEMS.map((it, i)=>(
+    `<div class="item">
+      <div>${it.nama}</div>
+      <div class="muted">${fmtIDR(it.harga)}</div>
+      <div class="muted">x${it.qty}</div>
+      <div><b>${fmtIDR(it.total)}</b></div>
+      <button class="rm" data-i="${i}">×</button>
+    </div>`
+  )).join("");
+  const sum = ITEMS.reduce((a,b)=> a + b.total, 0);
+  grandTotal.textContent = fmtIDR(sum);
+  $$(".rm", itemsWrap).forEach(btn => on(btn,"click",()=>{
+    const i = Number(btn.dataset.i); ITEMS.splice(i,1); refreshItems();
+  }));
+}
+function addCurrentItem(){
+  const nm = (namaBarang.value||"").trim();
+  const hs = Number(onlyNum(hargaSatuan.value)||0);
+  const q  = Number(onlyNum(qty.value)||0);
+  if (!nm) return alert("Isi nama barang.");
+  if (!hs || !q) return alert("Harga/Qty belum lengkap.");
+  ITEMS.push({nama:nm, harga:hs, qty:q, total:hs*q});
+  namaBarang.value=""; hargaSatuan.value=""; qty.value="";
+  refreshItems();
+}
+on(addItem, "click", (e)=>{ e.preventDefault(); addCurrentItem(); });
+
+// kreditor lain
+on(kreditor, "change", ()=>{
+  if (kreditor.value==="_OTHER_"){ kreditorLain.classList.remove("hidden"); kreditorLain.focus(); }
+  else { kreditorLain.classList.add("hidden"); kreditorLain.value = ""; }
+}, {passive:true});
+
+// auto No Faktur dari backend
+async function loadNextFaktur(){
+  try{
+    noFaktur.value = "Menunggu…";
+    const r = await fetch(`${SCRIPT_URL}?action=nextFaktur`);
+    const d = await r.json();
+    noFaktur.value = d.noFaktur || "INV-000001";
+  }catch(e){ noFaktur.value = "INV-000001"; }
+}
+loadNextFaktur();
+
+// NAV Step2/3
+on($("#backTo1"), "click", (e)=>{ e.preventDefault(); showSection("step1"); }, {passive:true});
+on($("#toStep3"), "click", (e)=>{
+  e.preventDefault();
+  if (!tanggal.value) return alert("Isi tanggal.");
+  if (!proyek.value)  return alert("Pilih proyek.");
+  if (!ITEMS.length)  return alert("Tambahkan minimal 1 item.");
+  showSection("step3");
+}, {passive:true});
+
+/* ================== STEP3 (Upload & Preview) ================== */
+const wrapBon = $("#wrapBon"), wrapSJ = $("#wrapSJ"), wrapUmum = $("#wrapBuktiUmum");
+function filesOK(list, label){
+  const files = [...(list||[])];
+  for(const f of files){
+    const okType = ALLOWED_TYPES.some(p => f.type.startsWith(p));
+    const okSize = f.size <= MAX_MB_EACH * ONE_MB;
+    if(!okType){ alert(`${label}: ${f.name} bertipe tidak didukung.`); return false; }
+    if(!okSize){ alert(`${label}: ${f.name} > ${MAX_MB_EACH}MB.`); return false; }
   }
   return true;
 }
 
-function openPreview(){
-  const kreditorFinal = (kreditor?.value === '__OTHER__') ? (kreditorLain?.value||'').trim() : (kreditor?.value||'');
-  if (kreditor && kreditor.value === '__OTHER__' && !kreditorFinal) return quickPop('Isi Kreditor/Supplier.');
+const previewModal = $("#previewModal");
+const pvStep1 = $("#pvStep1"), pvStep2 = $("#pvStep2");
+const pvTab1 = $("#pvTab1"), pvTab2 = $("#pvTab2");
+const pvBack = $("#pvBack"), pvNext = $("#pvNext");
+function pvShow(n){
+  const one = n===1;
+  pvStep1.classList.toggle("show", one);
+  pvStep2.classList.toggle("show", !one);
+  pvTab1.classList.toggle("active", one);
+  pvTab2.classList.toggle("active", !one);
+  pvBack.classList.toggle("hidden", one);
+  pvNext.classList.toggle("hidden", !one);
+}
+on(pvTab1,"click",()=>pvShow(1),{passive:true});
+on(pvTab2,"click",()=>pvShow(2),{passive:true});
+on(pvBack,"click",()=>pvShow(1),{passive:true});
+on(pvNext,"click",()=>pvShow(2),{passive:true});
 
-  const isMat = (kategoriAwalSel?.value==='Material' && jenisSel?.value==='Pengeluaran');
+function openPreview(){
+  // validasi file
+  const isMatPeng = true; // flow kita material
   let ok = true;
-  if (isMat){
-    ok = validateFileList(document.getElementById('buktiBon')?.files, 'Bukti Bon') &&
-         validateFileList(document.getElementById('buktiSJ')?.files,  'Bukti Surat Jalan');
+  if (isMatPeng){
+    ok = filesOK($("#buktiBon").files, "Bukti Bon") && filesOK($("#buktiSJ").files, "Bukti Surat Jalan");
   } else {
-    ok = validateFileList(document.getElementById('buktiUmum')?.files, 'Bukti Transaksi');
+    ok = filesOK($("#buktiUmum").files, "Bukti Transaksi");
   }
   if (!ok) return;
 
-  // Ringkasan
-  setText('pv-penginput',   penginputSel?.value);
-  setText('pv-jenis',       jenisSel?.value);
-  setText('pv-kategori',    kategoriAwalSel?.value);
-  setText('pv-tanggal',     tanggal?.value);
-  setText('pv-proyek',      proyek?.value);
+  // ringkasan
+  const kreditorFinal = (kreditor.value==="_OTHER_") ? (kreditorLain.value||"").trim() : kreditor.value;
+  $("#pv-penginput").textContent = penginputSel.value;
+  $("#pv-jenis").textContent     = "Pengeluaran";
+  $("#pv-kategori").textContent  = "Material";
+  $("#pv-tanggal").textContent   = tanggal.value || "-";
+  $("#pv-proyek").textContent    = proyek.value || "-";
+  $("#pv-kreditor").textContent  = kreditorFinal || "-";
+  $("#pv-status").textContent    = statusSel.value;
 
-  const matLabel = document.getElementById('pv-mat-label');
-  const matValue = document.getElementById('pv-mat-value');
+  const lines = ITEMS.map(it => `• ${it.nama} — ${fmtIDR(it.harga)} × ${it.qty} = ${fmtIDR(it.total)}`).join("\n");
+  $("#pv-mat-value").textContent = `Faktur: ${noFaktur.value}\n${lines}`;
+  $("#pv-nominal").textContent   = grandTotal.textContent;
 
-  if (isMat){
-    // gabung ringkasan item
-    const items = getAllItems();
-    const lines = items.map(it=>{
-      const nm = it.nama || '-';
-      const hs = it.hargaSatuan ? formatIDR(it.hargaSatuan) : 'Rp 0';
-      const q  = it.qty || 0;
-      const tt = it.total ? formatIDR(it.total) : 'Rp 0';
-      return `${nm} — ${hs} × ${q} = ${tt}`;
+  // thumbs
+  const thumbs = $("#pv-thumbs"); thumbs.innerHTML = "";
+  const files = [...($("#buktiBon").files||[]), ...($("#buktiSJ").files||[]), ...($("#buktiUmum").files||[])].slice(0,8);
+  if (!files.length){ $("#pv-bukti-kosong").classList.remove("hidden"); }
+  else {
+    $("#pv-bukti-kosong").classList.add("hidden");
+    files.forEach(f=>{
+      const div = document.createElement("div"); div.className = "thumb";
+      if ((f.type||"").startsWith("image/")){
+        const img = document.createElement("img");
+        const url = URL.createObjectURL(f);
+        img.onload = ()=> URL.revokeObjectURL(url);
+        img.src = url; div.appendChild(img);
+      } else { div.textContent = "PDF"; }
+      thumbs.appendChild(div);
     });
-    if (matLabel) matLabel.style.display = '';
-    if (matValue){ matValue.style.display = ''; matValue.textContent = lines.join(' • '); }
-    setText('pv-uraian', '-');
-    // sinkron nominal dari total
-    recalcFakturTotal();
-  } else {
-    if (matLabel) matLabel.style.display = 'none';
-    if (matValue){ matValue.style.display = 'none'; matValue.textContent = ''; }
-    setText('pv-uraian', uraian?.value);
   }
 
-  setText('pv-nominal', nominal?.value ? `Rp ${nominal.value}` : '');
-  setText('pv-kreditor', kreditorFinal || '-');
-  setText('pv-status',   statusSel?.value);
+  pvShow(1);
+  previewModal.classList.add("show");
+}
+on($("#openPreview"), "click", (e)=>{ e.preventDefault(); openPreview(); });
 
-  // Thumbs
-  const thumbs = document.getElementById('pv-thumbs');
-  const kosong = document.getElementById('pv-bukti-kosong');
-  if (thumbs && kosong){
-    thumbs.innerHTML = '';
-    const files = fileListForPreview().slice(0, 12);
-    if (files.length === 0){
-      kosong.style.display = 'block';
-    } else {
-      kosong.style.display = 'none';
-      files.forEach(f=>{
-        const box = document.createElement('div'); box.className = 'thumb';
-        if ((f.type||'').toLowerCase().startsWith('image/')){
-          const img = document.createElement('img');
-          const url = URL.createObjectURL(f);
-          img.onload = ()=> URL.revokeObjectURL(url);
-          img.src = url;
-          box.appendChild(img);
-        } else if (f.type === 'application/pdf'){
-          box.classList.add('pdf');
-        } else {
-          box.textContent = f.name;
-        }
-        thumbs.appendChild(box);
-      });
-    }
+on($("#cancel-btn"), "click", ()=> previewModal.classList.remove("show"));
+
+/* ================== SEND ================== */
+const loadingPop = $("#loadingPop");
+const resultPop  = $("#resultPop");
+const resultIcon = $("#resultIcon");
+const resultTitle= $("#resultTitle");
+const resultMsg  = $("#resultMsg");
+const btnKeluar  = $("#btnKeluar");
+const btnInputKembali = $("#btnInputKembali");
+const resultActions = $("#resultActions");
+const resultClose = $("#resultClose");
+
+function showLoading(b=true){ loadingPop.classList.toggle("show", b); }
+function showResult(type, title, msg, {onlyDismiss=false}={}){
+  if(type==="success"){
+    resultIcon.innerHTML = '<div class="chip" style="background:#22c55e;color:#fff;padding:10px 14px;border-radius:999px;font-weight:700">OK</div>';
+    resultActions.style.display = "";
+    resultClose.classList.add("hidden");
+  }else{
+    resultIcon.innerHTML = '<div class="chip" style="background:#ef4444;color:#fff;padding:10px 14px;border-radius:999px;font-weight:700">ERR</div>';
+    resultActions.style.display = "none";
+    resultClose.classList.remove("hidden");
+    on(resultClose,"click",()=> resultPop.classList.remove("show"), {once:true});
   }
-
-  showPv(1);
-  previewModal?.classList.add('active');
-}
-
-/***** ==================== LOADING & RESULT ==================== *****/
-const loadingPop = document.getElementById('loadingPop');
-const resultPop  = document.getElementById('resultPop');
-const resultIcon = document.getElementById('resultIcon');
-const resultTitle= document.getElementById('resultTitle');
-const resultMsg  = document.getElementById('resultMsg');
-const btnKeluar  = document.getElementById('btnKeluar');
-const btnInputKembali = document.getElementById('btnInputKembali');
-const resultActions = document.getElementById('resultActions');
-const resultClose   = document.getElementById('resultClose');
-
-if (btnInputKembali) btnInputKembali.addEventListener('click', ()=>{
-  resultPop?.classList.remove('show');
-  // reset input dasar
-  ['buktiBon','buktiSJ','buktiUmum'].forEach(id=>{
-    const el = document.getElementById(id);
-    if (el) el.value = '';
-  });
-  [tanggal, uraian, nominal].forEach(el=>{ if(el) el.value=''; });
-  // reset material item
-  if (itemsWrap) itemsWrap.innerHTML = '';
-  if (fakturTotalEl) fakturTotalEl.textContent = 'Rp 0';
-  if (noFaktur) noFaktur.value = '';
-  if (kreditor){ kreditor.value = 'CV Alam Berkah Abadi'; }
-  if (kreditorLain){ kreditorLain.value = ''; kreditorLain.classList.add('hidden'); }
-  if (statusSel){ statusSel.value = 'Sudah Dibayar'; }
-  go(1);
-});
-
-function exitApp(){
-  window.open('', '_self'); window.close();
-  setTimeout(()=>{ if (document.visibilityState !== 'hidden'){ location.replace(EXIT_FALLBACK_URL); } }, 80);
-}
-function showLoading(on=true){ if (loadingPop) loadingPop.classList.toggle('show', on); }
-function setErrorCloseOnly(){
-  if (!resultActions || !resultClose) return;
-  resultActions.style.display = 'none';
-  resultClose.classList.remove('hidden');
-  resultClose.onclick = ()=> resultPop?.classList.remove('show');
-}
-function setSuccessActions(){
-  if (!resultActions || !resultClose || !btnKeluar) return;
-  resultActions.style.display = '';
-  resultClose.classList.add('hidden');
-  btnKeluar.onclick = exitApp;
-}
-function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
-  if (!resultPop || !resultIcon || !resultTitle || !resultMsg) return;
-  if (type==='success'){
-    resultIcon.innerHTML = `
-      <div class="icon-wrap success" aria-hidden="true">
-        <svg viewBox="0 0 52 52"><path class="stroke" d="M14 27 l8 8 l16 -18"/></svg>
-      </div>`;
-    setSuccessActions();
-  } else {
-    resultIcon.innerHTML = `
-      <div class="icon-wrap error" aria-hidden="true">
-        <svg viewBox="0 0 52 52">
-          <path class="stroke" d="M16 16 L36 36"/>
-          <path class="stroke" d="M36 16 L16 36"/>
-        </svg>
-      </div>`;
-    setErrorCloseOnly();
-  }
-  resultTitle.textContent = title;
-  resultMsg.textContent   = message;
-  const backBtn = document.getElementById('btnInputKembali');
-  if (backBtn) backBtn.style.display = (type==='success' && !opts.onlyDismiss) ? '' : 'none';
-  resultPop.classList.add('show');
-}
-
-/***** ==================== PICKER (DROPDOWN MODAL) ==================== *****/
-const pickerPop   = document.getElementById('pickerPop');
-const pickerTitle = document.getElementById('pickerTitle');
-const pickerList  = document.getElementById('pickerList');
-const pickerCancel= document.getElementById('pickerCancel');
-
-if (pickerCancel) pickerCancel.addEventListener('click', ()=> pickerPop?.classList.remove('show'));
-
-function openPicker(selectEl, btn){
-  if (!pickerPop || !pickerTitle || !pickerList) return;
-  const label = btn.parentElement?.querySelector('label')?.textContent || 'Pilih Opsi';
-  pickerTitle.textContent = label;
-  pickerList.innerHTML = '';
-  [...selectEl.options].forEach((opt, idx)=>{
-    const div = document.createElement('div');
-    div.className = 'picker-option' + (opt.selected ? ' selected':'') + (opt.disabled ? ' disabled':'');
-    div.textContent = opt.text;
-    if (!opt.disabled){
-      div.addEventListener('click', ()=>{
-        selectEl.selectedIndex = idx;
-        btn.textContent = opt.text;
-        selectEl.dispatchEvent(new Event('change',{bubbles:true}));
-        pickerPop.classList.remove('show');
-      }, {passive:true});
-    }
-    pickerList.appendChild(div);
-  });
-  pickerPop.classList.add('show');
-}
-
-function initNiceSelects(){
-  document.querySelectorAll('select[data-nice]').forEach((sel)=>{
-    if (sel.dataset.enhanced) return;
-    sel.dataset.enhanced = "1";
-
-    sel.classList.add('native-hidden');
-    const wrap = document.createElement('div');
-    wrap.className = 'nice-wrap';
-    sel.parentNode.insertBefore(wrap, sel);
-    wrap.appendChild(sel);
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'nice-select';
-    btn.setAttribute('aria-haspopup','dialog');
-    btn.textContent = sel.options[sel.selectedIndex]?.text || '';
-    wrap.appendChild(btn);
-
-    const open = (e)=>{ e.preventDefault(); openPicker(sel, btn); };
-    btn.addEventListener('click', open);
-    btn.addEventListener('touchstart', open, {passive:false});
-  });
-}
-document.addEventListener('DOMContentLoaded', initNiceSelects);
-
-/***** ==================== KIRIM DATA KE GAS ==================== *****/
-function quickPop(message){
-  showResult('error','Terjadi Kesalahan', message || 'Periksa kembali input anda.', {onlyDismiss:true});
-  return false;
-}
-
-// Kompres adaptif untuk gambar >1MB (target ~900KB)
-async function compressIfNeeded(file){
-  if (!file || !(file.type||'').startsWith('image/')) return file;
-  if (file.size <= ONE_MB) return file;
-
-  const img = await fileToImage(file);
-  // Tentukan skala kira-kira (turunkan resolusi jika perlu)
-  const scale = Math.min(1, Math.sqrt((ONE_MB * 0.9) / file.size));
-  const canvas = document.createElement('canvas');
-  canvas.width  = Math.max(480, Math.round(img.width  * scale));
-  canvas.height = Math.max(480, Math.round(img.height * scale));
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-  let quality = 0.82;
-  let blob = await new Promise(res=> canvas.toBlob(res, 'image/jpeg', quality));
-  // jika tetap di atas 1MB, turunkan quality bertahap (min 0.5)
-  while (blob && blob.size > ONE_MB && quality > 0.5){
-    quality -= 0.08;
-    // eslint-disable-next-line no-await-in-loop
-    blob = await new Promise(res=> canvas.toBlob(res, 'image/jpeg', quality));
-  }
-  // fallback: kalau somehow gagal, kembali ke file asli
-  if (!blob) return file;
-  return new File([blob], (file.name || 'image') + '.jpg', {type: 'image/jpeg'});
-}
-
-function fileToImage(file){
-  return new Promise((resolve, reject)=>{
-    const reader = new FileReader();
-    reader.onload = ()=>{
-      const img = new Image();
-      img.onload = ()=> resolve(img);
-      img.onerror= reject;
-      img.src = reader.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-async function filesToPayloadArrays(){
-  const isMat = (kategoriAwalSel?.value==='Material' && jenisSel?.value==='Pengeluaran');
-
-  const out = { buktiInvoice:[], buktiSuratJalan:[], buktiLain:[], deferredFiles:[] };
-
-  async function pushList(inputId, targetArr){
-    const list = document.getElementById(inputId)?.files || [];
-    for (const f of list){
-      // compress adaptif jika >1MB
-      let file = f;
-      if ((f.type||'').startsWith('image/') && f.size > ONE_MB){
-        // eslint-disable-next-line no-await-in-loop
-        file = await compressIfNeeded(f);
-      }
-      if ((file.size||0) > ONE_MB){
-        // tetap besar: antrekan saja
-        out.deferredFiles.push({ name:file.name, type:file.type, size:file.size, bucket: inputId });
-      }else{
-        // bawa langsung sebagai base64
-        // eslint-disable-next-line no-await-in-loop
-        const base64 = await fileToBase64(file);
-        targetArr.push({ name:file.name, type:file.type, base64 });
-      }
-    }
-  }
-
-  if (isMat){
-    await pushList('buktiBon', out.buktiInvoice);
-    await pushList('buktiSJ',  out.buktiSuratJalan);
-  } else {
-    await pushList('buktiUmum', out.buktiLain);
-  }
-  return out;
-}
-
-function fileToBase64(file){
-  return new Promise((resolve, reject)=>{
-    const fr = new FileReader();
-    fr.onloadend = ()=> resolve((fr.result||'').toString().split(',')[1] || '');
-    fr.onerror   = reject;
-    fr.readAsDataURL(file);
-  });
-}
-
-function buildPayload(){
-  const isMat = (kategoriAwalSel?.value==='Material' && jenisSel?.value==='Pengeluaran');
-  const kreditorFinal = (kreditor?.value === '__OTHER__') ? (kreditorLain?.value||'').trim() : (kreditor?.value || '');
-
-  const payload = {
-    action: isMat ? 'submitMaterialLine' : 'submitGeneral',
-    penginput: penginputSel?.value || '',
-    jenis: jenisSel?.value || '',
-    kategori: kategoriAwalSel?.value || '',
-    tanggal: tanggal?.value || '',
-    proyek:  proyek?.value || '',
-    uraian:  isMat ? '' : (uraian?.value || ''),
-    // nominal di-hide pada material; server pakai total faktur dari items
-    nominal: (nominal?.value || '').replace(/[^\d]/g,''),
-    kreditor: kreditorFinal,
-    status: statusSel?.value || '',
-    noFaktur: isMat ? (noFaktur?.value || '') : '',
-
-    // material detail
-    items: isMat ? getAllItems() : null,
-
-    // lampiran
-    buktiInvoice:[], buktiSuratJalan:[], buktiLain:[],
-    deferredFiles:[],
-  };
-  return payload;
+  resultTitle.textContent = title || "Selesai";
+  resultMsg.textContent   = msg || "";
+  btnKeluar.onclick = ()=> window.history.length ? history.back() : location.replace("about:blank");
+  btnInputKembali.style.display = type==="success" && !onlyDismiss ? "" : "none";
+  resultPop.classList.add("show");
 }
 
 async function sendData(){
-  previewModal?.classList.remove('active');
+  previewModal.classList.remove("show");
+
+  const kreditorFinal = (kreditor.value==="_OTHER_") ? (kreditorLain.value||"").trim() : kreditor.value;
+  const payload = {
+    action:"submit",
+    penginput: penginputSel.value,
+    jenis: "Pengeluaran",
+    kategori: "Material",
+    tanggal: tanggal.value,
+    proyek: proyek.value,
+    kreditor: kreditorFinal,
+    status: statusSel.value,
+    noFaktur: noFaktur.value,
+    items: ITEMS,
+    total: ITEMS.reduce((a,b)=>a+b.total,0),
+    buktiInvoice:[], buktiSuratJalan:[], buktiLain:[],
+    deferredFiles:[]
+  };
+
+  function pushFiles(list, arr){
+    [...(list||[])].forEach(f=>{
+      if (f.size > ONE_MB){
+        payload.deferredFiles.push({name:f.name, type:f.type, size:f.size, bucket:"general"});
+      }else{
+        const fr = new FileReader();
+        const p = new Promise(res=>{
+          fr.onloadend = ()=>{
+            const base64 = String(fr.result||"").split(",")[1]||"";
+            arr.push({name:f.name, type:f.type, base64}); res();
+          };
+        });
+        fr.readAsDataURL(f);
+        readers.push(p);
+      }
+    });
+  }
+  const readers = [];
+  pushFiles($("#buktiBon").files, payload.buktiInvoice);
+  pushFiles($("#buktiSJ").files,  payload.buktiSuratJalan);
+  pushFiles($("#buktiUmum").files, payload.buktiLain);
 
   try{
     showLoading(true);
-    const payload = buildPayload();
-    const files = await filesToPayloadArrays();
-    payload.buktiInvoice  = files.buktiInvoice;
-    payload.buktiSuratJalan = files.buktiSuratJalan;
-    payload.buktiLain     = files.buktiLain;
-    payload.deferredFiles = files.deferredFiles;
-
-    // kirim
-    const controller = new AbortController();
-    const t = setTimeout(()=>controller.abort(), 25000);
-    const resp = await fetch(scriptURL, {
-      method:'POST',
-      headers:{ 'Content-Type':'text/plain;charset=UTF-8' },
+    await Promise.all(readers);
+    const ctl = new AbortController(); const to = setTimeout(()=>ctl.abort(), 25000);
+    const r = await fetch(SCRIPT_URL, {
+      method:"POST",
+      headers:{ "Content-Type":"text/plain;charset=UTF-8" },
       body: JSON.stringify(payload),
-      signal: controller.signal
-    }).finally(()=>clearTimeout(t));
-
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
+      signal: ctl.signal
+    }).finally(()=>clearTimeout(to));
+    const d = await r.json();
     showLoading(false);
-
-    if (data.status === 'ok'){
-      // sinkron nomor faktur terpakai (opsional tergantung backend)
-      showResult('success','Selesai','Data anda telah terinput.');
-    } else {
-      showResult('error','Terjadi Kesalahan', data.error || 'Gagal menyimpan.');
+    if (d.status==="ok"){
+      showResult("success","Selesai","Data anda telah terinput.");
+      // reset ringan
+      ITEMS = []; refreshItems();
+      $("#buktiBon").value = ""; $("#buktiSJ").value=""; $("#buktiUmum").value="";
+      namaBarang.value=""; hargaSatuan.value=""; qty.value="";
+      loadNextFaktur();
+      showSection("step1");
+    }else{
+      showResult("error","Gagal", d.error||"Gagal menyimpan.");
     }
   }catch(err){
     showLoading(false);
-    const msg = (err.name === 'AbortError')
-      ? 'Koneksi lambat. Coba lagi (maks 25 dtk).'
-      : (String(err).includes('Failed to fetch') ? 'Gagal terhubung ke server.' : err.message);
-    showResult('error','Terjadi Kesalahan', msg);
+    const msg = err.name==="AbortError" ? "Koneksi lambat. Coba lagi (maks 25 dtk)." :
+      (String(err).includes("Failed to fetch") ? "Gagal terhubung ke server." : err.message);
+    showResult("error","Terjadi Kesalahan", msg);
     console.error(err);
   }
 }
+on($("#confirm-btn"), "click", sendData);
 
-/***** ==================== INIT SEMUANYA ==================== *****/
-document.addEventListener('DOMContentLoaded', ()=>{
-  // default ke step/home sesuai elemen
-  if (home) go(0); else if (step1) go(1);
+/* ================== PICKER (nice-select) ================== */
+const pickerPop = $("#pickerPop");
+const pickerTitle = $("#pickerTitle");
+const pickerList  = $("#pickerList");
+on($("#pickerCancel"), "click", ()=> pickerPop.classList.remove("show"), {passive:true});
 
-  // Siapkan picker untuk semua select
-  initNiceSelects();
+function openPicker(selectEl, btn){
+  pickerTitle.textContent = btn.parentElement.querySelector("label")?.textContent || "Pilih Opsi";
+  pickerList.innerHTML = "";
+  [...selectEl.options].forEach((opt, idx)=>{
+    const div = document.createElement("div");
+    div.className = "opt" + (opt.selected ? " sel":"");
+    div.textContent = opt.text;
+    if (!opt.disabled){
+      on(div, "click", ()=>{
+        selectEl.selectedIndex = idx;
+        btn.textContent = opt.text;
+        selectEl.dispatchEvent(new Event("change",{bubbles:true}));
+        pickerPop.classList.remove("show");
+      }, {once:true});
+    }
+    pickerList.appendChild(div);
+  });
+  pickerPop.classList.add("show");
+}
+function initNice(){
+  $$("select[data-nice]").forEach((sel)=>{
+    if (sel.dataset.enhanced) return; sel.dataset.enhanced = "1";
+    sel.classList.add("native-hidden");
+    const wrap = document.createElement("div"); wrap.className = "nice-wrap"; sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel);
+    const btn = document.createElement("button"); btn.type="button"; btn.className="input"; btn.style.textAlign="left";
+    btn.textContent = sel.options[sel.selectedIndex]?.text || "";
+    wrap.appendChild(btn);
+    const open = (e)=>{ e.preventDefault(); openPicker(sel, btn); };
+    on(btn, "click", open);
+    on(btn, "touchstart", open, {passive:false});
+  });
+}
+document.addEventListener("DOMContentLoaded", initNice);
 
-  // Pastikan material mode tersetel benar jika user ubah dropdown awal
-  toggleMaterialBlock();
-});
