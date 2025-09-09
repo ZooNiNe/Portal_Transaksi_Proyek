@@ -1,59 +1,131 @@
-// GAS Web App URL
-const scriptURL = 'https://script.google.com/macros/s/AKfycby5M6p9T7uo51PCCatCbVGa14yyqFlyD5YrIt1Zj0eeGcY6XJj5k-IWFb6Qu7VtxhCHaw/exec';
+// ===== KONFIG =====
+const scriptURL = 'https://script.google.com/macros/s/AKfycbzgod3bBBFmKBqlgyW_4oPUkCTUsaqznDV-JxPPNSac7BtTbOaMSZoBN-Y_WGaDeFj9sQ/exec';
 const EXIT_FALLBACK_URL = 'about:blank';
+const ONE_MB = 1024 * 1024;
 
-/* ===== Elemen langkah ===== */
-const step1 = document.getElementById('step1');
-const step2 = document.getElementById('step2');
-const step3 = document.getElementById('step3');
+// ===== SECTION refs =====
+const home   = document.getElementById('home');
+const step1  = document.getElementById('step1');
+const step2  = document.getElementById('step2');
+const step3  = document.getElementById('step3');
 
-/* Step1 */
+// ===== DASHBOARD =====
+const dashCards = document.getElementById('dash-cards');
+const btnRefresh = document.getElementById('btnRefresh');
+const btnGotoInput = document.getElementById('gotoInput');
+btnGotoInput.addEventListener('click', ()=>go(1));
+btnRefresh.addEventListener('click', loadDashboard);
+
+let chartPengeluaran;
+function loadDashboard(){
+  fetch(${scriptURL}?action=dashboard, {method:'GET'})
+    .then(r=>r.json())
+    .then(d=>{
+      // cards
+      const items = [
+        {label:'Total Pendapatan', val:d.totalPendapatan||'-'},
+        {label:'Biaya Material', val:d.totalMaterial||'-'},
+        {label:'Biaya Gaji',      val:d.totalGaji||'-'},
+        {label:'Kas Saat Ini',    val:d.kas||'-'},
+        {label:'Estimasi Bersih', val:d.estimasi||'-'},
+      ];
+      dashCards.innerHTML = items.map(it=>(
+        <div class="dash-card"><div class="label">${it.label}</div><div class="val">${it.val}</div></div>
+      )).join('');
+
+      // chart
+      const ctx = document.getElementById('chartPengeluaran');
+      if (chartPengeluaran){ chartPengeluaran.destroy(); }
+      chartPengeluaran = new Chart(ctx, {
+        type:'bar',
+        data:{
+          labels: d.chart?.labels || [],
+          datasets:[{label:'Pengeluaran', data:d.chart?.values || []}]
+        },
+        options:{responsive:true, maintainAspectRatio:false}
+      });
+    })
+    .catch(e=>console.error(e));
+}
+document.addEventListener('DOMContentLoaded', loadDashboard);
+
+// ===== STEP 1 =====
 const penginputSel = document.getElementById('penginput');
 const jenisSel = document.getElementById('jenis');
 const kategoriAwalSel = document.getElementById('kategoriAwal');
+document.getElementById('toStep2').addEventListener('click',(e)=>{e.preventDefault(); go(2);});
 
-const goto2 = (e)=>{ e && e.preventDefault && e.preventDefault(); go(2); };
-document.getElementById('toStep2').addEventListener('click', goto2);
-document.getElementById('toStep2').addEventListener('touchend', goto2, {passive:false});
-
-/* Step2 */
+// ===== STEP 2 =====
 const tanggal = document.getElementById('tanggal');
 const proyek = document.getElementById('proyek');
+const wrapUraian = document.getElementById('wrapUraian');
 const uraian = document.getElementById('uraian');
 const nominal = document.getElementById('nominal');
 const kreditor = document.getElementById('kreditor');
 const kreditorLain = document.getElementById('kreditorLain');
 const statusSel = document.getElementById('status');
 
+// Material fields
+const materialBlock = document.getElementById('materialBlock');
+const noFaktur = document.getElementById('noFaktur');
+const namaBarang = document.getElementById('namaBarang');
+const hargaSatuan = document.getElementById('hargaSatuan');
+const qty = document.getElementById('qty');
+const totalHarga = document.getElementById('totalHarga');
+
+function toIDR(v){ return (v||'').toString().replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.'); }
+nominal.addEventListener('input', ()=> nominal.value = toIDR(nominal.value));
+hargaSatuan.addEventListener('input', ()=> { hargaSatuan.value = toIDR(hargaSatuan.value); calcTotal(); });
+qty.addEventListener('input', calcTotal);
+function calcTotal(){
+  const hs = parseInt((hargaSatuan.value||'').replace(/\./g,''))||0;
+  const q  = parseInt(qty.value||0);
+  const t  = hs*q;
+  totalHarga.value = t ? toIDR(String(t)) : '';
+}
+
+function toggleMaterialBlock(){
+  const show = (kategoriAwalSel.value==='Material' && jenisSel.value==='Pengeluaran');
+  materialBlock.classList.toggle('hidden', !show);
+  wrapUraian.classList.toggle('hidden', show);
+}
+jenisSel.addEventListener('change', toggleMaterialBlock);
+kategoriAwalSel.addEventListener('change', toggleMaterialBlock);
+
+// kreditor lainnya
+kreditor.addEventListener('change', ()=>{
+  if (kreditor.value==='_OTHER_'){ kreditorLain.classList.remove('hidden'); kreditorLain.focus(); }
+  else { kreditorLain.classList.add('hidden'); kreditorLain.value=''; }
+});
+
 document.getElementById('backTo1').addEventListener('click', (e)=>{e.preventDefault(); go(1);});
-document.getElementById('toStep3').addEventListener('click', (e)=>{
+document.getElementById('toStep3').addEventListener('click',(e)=>{
   e.preventDefault();
   if (!tanggal.value) return quickPop('Isi Tanggal.');
   if (!proyek.value)  return quickPop('Pilih Proyek.');
-  if (!uraian.value)  return quickPop('Isi Uraian.');
+  const mat = !materialBlock.classList.contains('hidden');
+  if (mat){
+    if (!noFaktur.value) return quickPop('Isi No Faktur.');
+    if (!namaBarang.value) return quickPop('Isi Nama Barang.');
+    if (!hargaSatuan.value || !qty.value) return quickPop('Harga/Qty belum lengkap.');
+    // isi nominal otomatis dari total
+    nominal.value = totalHarga.value || nominal.value;
+  }else{
+    if (!uraian.value) return quickPop('Isi Uraian.');
+  }
   if (!nominal.value) return quickPop('Isi Nominal.');
   if (!statusSel.value) return quickPop('Pilih Status.');
   prepareUploadSection(); go(3);
 });
 
-/* Kreditor "Lainnya" */
-kreditor.addEventListener('change', ()=>{
-  if (kreditor.value === '__OTHER__'){ kreditorLain.classList.remove('hidden'); kreditorLain.focus(); }
-  else { kreditorLain.classList.add('hidden'); kreditorLain.value=''; }
-});
-
-/* Format Rupiah */
-const toIDR = v => (v||'').toString().replace(/[^\d]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
-nominal.addEventListener('input', ()=>{ nominal.value = toIDR(nominal.value); });
-
-/* Step3 */
+// ===== STEP 3 =====
 const wrapBon = document.getElementById('wrapBon');
 const wrapSJ  = document.getElementById('wrapSJ');
 const wrapUmum= document.getElementById('wrapBuktiUmum');
 document.getElementById('backTo2').addEventListener('click',(e)=>{e.preventDefault(); go(2);});
 document.getElementById('openPreview').addEventListener('click', openPreview);
 
-/* Modal Preview */
+// ===== PREVIEW =====
 const previewModal = document.getElementById('previewModal');
 const cancelBtn = document.getElementById('cancel-btn');
 const confirmBtn = document.getElementById('confirm-btn');
@@ -66,12 +138,10 @@ const pvTab1  = document.getElementById('pvTab1');
 const pvTab2  = document.getElementById('pvTab2');
 const pvBack  = document.getElementById('pvBack');
 const pvNext  = document.getElementById('pvNext');
-
 pvTab1.addEventListener('click',()=>showPv(1));
 pvTab2.addEventListener('click',()=>showPv(2));
 pvBack.addEventListener('click',()=>showPv(1));
 pvNext.addEventListener('click',()=>showPv(2));
-
 function showPv(n){
   const isOne = (n===1);
   pvStep1.classList.toggle('active', isOne);
@@ -82,64 +152,63 @@ function showPv(n){
   pvNext.classList.toggle('hidden', !isOne);
 }
 
-/* State */
+// state + nav
 const STATE = { penginput:'', jenis:'', kategori:'' };
-
 function go(n){
+  home.classList.toggle('hidden', n!==0);
   step1.classList.toggle('hidden', n!==1);
   step2.classList.toggle('hidden', n!==2);
   step3.classList.toggle('hidden', n!==3);
+  if(n===1){ window.scrollTo({top:0,behavior:'smooth'}); }
   if (n===2){
     STATE.penginput = penginputSel.value;
     STATE.jenis = jenisSel.value;
     STATE.kategori = kategoriAwalSel.value;
+    toggleMaterialBlock();
   }
 }
-
 function prepareUploadSection(){
-  const isMaterialPengeluaran = (STATE.kategori==='Material' && STATE.jenis==='Pengeluaran');
+  const isMaterialPengeluaran = (kategoriAwalSel.value==='Material' && jenisSel.value==='Pengeluaran');
   wrapBon.classList.toggle('hidden', !isMaterialPengeluaran);
   wrapSJ.classList.toggle('hidden', !isMaterialPengeluaran);
   wrapUmum.classList.toggle('hidden', isMaterialPengeluaran);
 }
+document.addEventListener('DOMContentLoaded', ()=>go(0));
 
-/* ===== Result pop (juga untuk validasi) ===== */
+// ===== helper pop
 function quickPop(message){
   showResult('error','Terjadi Kesalahan', message || 'Periksa kembali input anda.', {onlyDismiss:true});
   return false;
 }
 
-/* ===== Validasi file ===== */
-const MAX_MB = 5;
+// ===== file validate
+const MAX_MB_EACH = 5;
 const ALLOWED = ['image/', 'application/pdf'];
 function validateFileList(fileList, label){
   const files = [...(fileList||[])];
   for (const f of files){
     const okType = ALLOWED.some(p => f.type.startsWith(p));
-    const okSize = f.size <= MAX_MB * 1024 * 1024;
-    if (!okType){ return quickPop(`${label}: ${f.name} bertipe tidak didukung.`); }
-    if (!okSize){ return quickPop(`${label}: ${f.name} > ${MAX_MB}MB.`); }
+    const okSize = f.size <= MAX_MB_EACH * ONE_MB;
+    if (!okType){ return quickPop(${label}: ${f.name} bertipe tidak didukung.); }
+    if (!okSize){ return quickPop(${label}: ${f.name} > ${MAX_MB_EACH}MB.); }
   }
   return true;
 }
 
-/* ===== Preview ===== */
+// ===== preview
 function setText(id,v){ document.getElementById(id).textContent = v || '-'; }
-
 function filesForPreview(){
-  const isMatPeng = (STATE.kategori==='Material' && STATE.jenis==='Pengeluaran');
+  const isMatPeng = (kategoriAwalSel.value==='Material' && jenisSel.value==='Pengeluaran');
   if (isMatPeng){
     return [...(document.getElementById('buktiBon').files||[]), ...(document.getElementById('buktiSJ').files||[])];
   } else {
     return [...(document.getElementById('buktiUmum').files||[])];
   }
 }
-
 function openPreview(){
-  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
-  if (kreditor.value==='__OTHER__' && !kreditorFinal){ return quickPop('Isi Kreditor/Supplier.'); }
-
-  const isMatPeng = (STATE.kategori==='Material' && STATE.jenis==='Pengeluaran');
+  const kreditorFinal = (kreditor.value==='_OTHER_') ? (kreditorLain.value||'').trim() : kreditor.value;
+  if (kreditor.value==='_OTHER_' && !kreditorFinal){ return quickPop('Isi Kreditor/Supplier.'); }
+  const isMatPeng = (kategoriAwalSel.value==='Material' && jenisSel.value==='Pengeluaran');
   let ok = true;
   if (isMatPeng){
     ok = validateFileList(document.getElementById('buktiBon').files, 'Bukti Bon') &&
@@ -149,12 +218,23 @@ function openPreview(){
   }
   if (!ok) return;
 
-  setText('pv-penginput', STATE.penginput);
-  setText('pv-jenis', STATE.jenis);
-  setText('pv-kategori', STATE.kategori);
+  setText('pv-penginput', penginputSel.value);
+  setText('pv-jenis', jenisSel.value);
+  setText('pv-kategori', kategoriAwalSel.value);
   setText('pv-tanggal', tanggal.value);
   setText('pv-proyek', proyek.value);
-  setText('pv-uraian', uraian.value);
+
+  // tampilkan ringkasan material
+  const showMat = (kategoriAwalSel.value==='Material' && jenisSel.value==='Pengeluaran');
+  document.getElementById('pv-mat-label').style.display = showMat ? '' : 'none';
+  document.getElementById('pv-mat-value').style.display = showMat ? '' : 'none';
+  if(showMat){
+    document.getElementById('pv-mat-value').textContent =
+      ${noFaktur.value || '-'} • ${namaBarang.value || '-'} • Qty ${qty.value||0} @Rp${hargaSatuan.value||0};
+  }
+
+  if (!showMat) setText('pv-uraian', uraian.value); else setText('pv-uraian', '-');
+
   setText('pv-nominal', nominal.value ? 'Rp '+nominal.value : '');
   setText('pv-kreditor', kreditorFinal || '-');
   setText('pv-status', statusSel.value);
@@ -183,7 +263,7 @@ function openPreview(){
   previewModal.classList.add('active');
 }
 
-/* ===== Loading & Result Popups ===== */
+// ===== Loading & Result
 const loadingPop = document.getElementById('loadingPop');
 const resultPop  = document.getElementById('resultPop');
 const resultIcon = document.getElementById('resultIcon');
@@ -196,70 +276,25 @@ const resultClose = document.getElementById('resultClose');
 
 btnInputKembali.addEventListener('click', ()=>{
   resultPop.classList.remove('show');
-  // reset & kembali ke step1
   ['buktiBon','buktiSJ','buktiUmum'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
-  [tanggal,uraian,nominal].forEach(el=>el.value='');
+  [tanggal,uraian,nominal,noFaktur,namaBarang,hargaSatuan,qty,totalHarga].forEach(el=>{ if(el) el.value=''; });
   kreditor.value='CV Alam Berkah Abadi'; kreditorLain.value=''; kreditorLain.classList.add('hidden');
   statusSel.value='Sudah Dibayar';
-  step3.classList.add('hidden'); step2.classList.add('hidden'); step1.classList.remove('hidden');
-  window.scrollTo({top:0,behavior:'smooth'});
+  go(1);
 });
-
-/* ======== EXIT: tutup tab robust di mobile ======== */
 function exitApp(){
-  // 1) coba tutup standar
-  try{ window.open('', '_self'); }catch(e){}
-  try{ window.close(); }catch(e){}
-
-  // 2) bekukan UI agar tidak "kembali ke landing 1"
-  try{
-    document.body.style.background = '#fff';
-    document.body.innerHTML = '';
-  }catch(e){}
-
-  // 3) fallback bertingkat — beberapa mobile butuh ini
-  const attempts = [
-    ()=>location.replace(EXIT_FALLBACK_URL),
-    ()=>location.replace('data:text/html,<meta name=viewport content=width=device-width,initial-scale=1><style>body{font-family:sans-serif;padding:24px;color:#6b7280}</style><p>Tab ditutup.</p>'),
-    ()=>{ location.href = EXIT_FALLBACK_URL; }
-  ];
-  let i = 0;
-  (function tryClose(){
-    if (document.visibilityState === 'hidden') return; // tab sudah hilang
-    if (i < attempts.length){
-      setTimeout(()=>{ try{ attempts[i++](); } finally{ tryClose(); } }, 80);
-    }
-  })();
+  window.open('', '_self'); window.close();
+  setTimeout(()=>{ if (document.visibilityState !== 'hidden'){ location.replace(EXIT_FALLBACK_URL); } }, 80);
 }
-
-/* handler sukses vs error */
 function showLoading(on=true){ loadingPop.classList.toggle('show', on); }
-function setErrorCloseOnly(){
-  resultActions.style.display = 'none';
-  resultClose.classList.remove('hidden');
-  resultClose.onclick = ()=> resultPop.classList.remove('show');
-}
-function setSuccessActions(){
-  resultActions.style.display = '';
-  resultClose.classList.add('hidden');
-  btnKeluar.onclick = (e)=>{ e.preventDefault(); e.stopPropagation(); exitApp(); };
-}
-
+function setErrorCloseOnly(){ resultActions.style.display='none'; resultClose.classList.remove('hidden'); resultClose.onclick=()=> resultPop.classList.remove('show'); }
+function setSuccessActions(){ resultActions.style.display=''; resultClose.classList.add('hidden'); btnKeluar.onclick=exitApp; }
 function showResult(type='success', title='Selesai', message='Data anda telah terinput.', opts={}){
   if (type==='success'){
-    resultIcon.innerHTML =
-      `<div class="icon-wrap success" aria-hidden="true">
-        <svg viewBox="0 0 52 52"><path class="stroke" d="M14 27 l8 8 l16 -18"/></svg>
-      </div>`;
+    resultIcon.innerHTML = <div class="icon-wrap success"><svg viewBox="0 0 52 52"><path class="stroke" d="M14 27 l8 8 l16 -18"/></svg></div>;
     setSuccessActions();
   } else {
-    resultIcon.innerHTML =
-      `<div class="icon-wrap error" aria-hidden="true">
-        <svg viewBox="0 0 52 52">
-          <path class="stroke" d="M16 16 L36 36"/>
-          <path class="stroke" d="M36 16 L16 36"/>
-        </svg>
-      </div>`;
+    resultIcon.innerHTML = <div class="icon-wrap error"><svg viewBox="0 0 52 52"><path class="stroke" d="M16 16 L36 36"/><path class="stroke" d="M36 16 L16 36"/></svg></div>;
     setErrorCloseOnly();
   }
   resultTitle.textContent = title;
@@ -268,40 +303,59 @@ function showResult(type='success', title='Selesai', message='Data anda telah te
   resultPop.classList.add('show');
 }
 
-/* ===== Kirim ke GAS ===== */
+// ===== Kirim ke GAS (dengan antrian >1MB) =====
 function sendData(){
   previewModal.classList.remove('active');
 
-  const kreditorFinal = (kreditor.value==='__OTHER__') ? (kreditorLain.value||'').trim() : kreditor.value;
+  const kreditorFinal = (kreditor.value==='_OTHER_') ? (kreditorLain.value||'').trim() : kreditor.value;
+  const isMat = (kategoriAwalSel.value==='Material' && jenisSel.value==='Pengeluaran');
 
   const payload = {
+    action: 'submit',
     penginput: penginputSel.value,
     jenis: jenisSel.value,
     kategori: kategoriAwalSel.value,
     tanggal: tanggal.value,
     proyek: proyek.value,
-    uraian: uraian.value,
-    nominal: nominal.value.replace(/[^\d]/g,''),
+    uraian: isMat ? '' : (uraian.value||''),
+    nominal: (nominal.value||'').replace(/[^\d]/g,''),
     kreditor: kreditorFinal,
     status: statusSel.value,
-    buktiInvoice: [], buktiSuratJalan: [], buktiLain: []
+
+    material: isMat ? {
+      noFaktur: noFaktur.value||'',
+      namaBarang: namaBarang.value||'',
+      hargaSatuan: (hargaSatuan.value||'').replace(/[^\d]/g,''),
+      qty: parseInt(qty.value||0),
+      total: (totalHarga.value||'').replace(/[^\d]/g,'')
+    } : null,
+
+    buktiInvoice: [], buktiSuratJalan: [], buktiLain: [],
+    deferredFiles: [] // file >1MB dimasukkan antrian
   };
 
-  const isMatPeng = (payload.kategori==='Material' && payload.jenis==='Pengeluaran');
-  const readers = [];
+  const isMatPeng = isMat;
   const pushFiles = (fileList, targetArr)=>{
     [...(fileList||[])].forEach(f=>{
-      readers.push(new Promise(res=>{
+      if (f.size > ONE_MB){
+        // masukkan antrian
+        payload.deferredFiles.push({ name:f.name, type:f.type, size:f.size, bucket:'general' });
+      }else{
         const fr = new FileReader();
-        fr.onloadend = ()=> {
-          const base64 = (fr.result||'').toString().split(',')[1] || '';
-          targetArr.push({ name:f.name, type:f.type, base64 });
-          res();
-        };
+        const p = new Promise(res=>{
+          fr.onloadend = ()=> {
+            const base64 = (fr.result||'').toString().split(',')[1] || '';
+            targetArr.push({ name:f.name, type:f.type, base64 });
+            res();
+          };
+        });
         fr.readAsDataURL(f);
-      }));
+        readers.push(p);
+      }
     });
   };
+
+  const readers = [];
   if (isMatPeng){
     pushFiles(document.getElementById('buktiBon').files, payload.buktiInvoice);
     pushFiles(document.getElementById('buktiSJ').files, payload.buktiSuratJalan);
@@ -310,7 +364,6 @@ function sendData(){
   }
 
   showLoading(true);
-
   Promise.all(readers)
     .then(()=>{
       const controller = new AbortController();
@@ -322,35 +375,30 @@ function sendData(){
         signal: controller.signal
       }).finally(()=>clearTimeout(t));
     })
-    .then(r=>{
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      return r.json();
-    })
-    .then(data=>{
+    .then(r=>{ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+    .then(d=>{
       showLoading(false);
-      if (data.status==='ok'){
+      if(d.status==='ok'){
         showResult('success','Selesai','Data anda telah terinput.');
-      } else {
-        showResult('error','Terjadi Kesalahan', data.error || 'Gagal menyimpan. Coba lagi.');
+      }else{
+        showResult('error','Terjadi Kesalahan', d.error||'Gagal menyimpan.'); 
       }
     })
     .catch(err=>{
       showLoading(false);
-      const msg = (err.name === 'AbortError')
-        ? 'Koneksi lambat. Coba lagi (maks 25 dtk).'
-        : (String(err).includes('Failed to fetch') ? 'Gagal terhubung ke server.' : err.message);
+      const msg = err.name==='AbortError' ? 'Koneksi lambat. Coba lagi (maks 25 dtk).' :
+                  (String(err).includes('Failed to fetch') ? 'Gagal terhubung ke server.' : err.message);
       showResult('error','Terjadi Kesalahan', msg);
       console.error(err);
     });
 }
 
-/* ===== Picker modal (dropdown) ===== */
+/* ===== Picker modal (dropdown) (tetap sama versi Anda) ===== */
 const pickerPop = document.getElementById('pickerPop');
 const pickerTitle = document.getElementById('pickerTitle');
 const pickerList  = document.getElementById('pickerList');
 const pickerCancel= document.getElementById('pickerCancel');
 pickerCancel.addEventListener('click', ()=> pickerPop.classList.remove('show'));
-
 function openPicker(selectEl, btn){
   pickerTitle.textContent = btn.parentElement.querySelector('label')?.textContent || 'Pilih Opsi';
   pickerList.innerHTML = '';
@@ -370,31 +418,17 @@ function openPicker(selectEl, btn){
   });
   pickerPop.classList.add('show');
 }
-
-/* Enhance semua select → tombol + picker */
 function initNiceSelects(){
   document.querySelectorAll('select[data-nice]').forEach((sel)=>{
-    if (sel.dataset.enhanced) return;
-    sel.dataset.enhanced = "1";
-
-    // Matikan native dropdown total
+    if (sel.dataset.enhanced) return; sel.dataset.enhanced="1";
     sel.classList.add('native-hidden');
-
-    const wrap = document.createElement('div');
-    wrap.className = 'nice-wrap';
-    sel.parentNode.insertBefore(wrap, sel);
-    wrap.appendChild(sel);
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'nice-select';
+    const wrap = document.createElement('div'); wrap.className='nice-wrap';
+    sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel);
+    const btn = document.createElement('button'); btn.type='button'; btn.className='nice-select';
     btn.setAttribute('aria-haspopup','dialog');
-    btn.textContent = sel.options[sel.selectedIndex]?.text || '';
-    wrap.appendChild(btn);
-
+    btn.textContent = sel.options[sel.selectedIndex]?.text || ''; wrap.appendChild(btn);
     const open = (e)=>{ e.preventDefault(); openPicker(sel, btn); };
-    btn.addEventListener('click', open);
-    btn.addEventListener('touchstart', open, {passive:false}); // pastikan mobile tidak memunculkan native
+    btn.addEventListener('click', open); btn.addEventListener('touchstart', open, {passive:false});
   });
 }
 document.addEventListener('DOMContentLoaded', initNiceSelects);

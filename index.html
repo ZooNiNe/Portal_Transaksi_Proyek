@@ -11,8 +11,32 @@
 </head>
 <body>
 
+  <!-- ===== HOME / DASHBOARD ===== -->
+  <section class="landing bg1" id="home">
+    <div class="overlay" aria-hidden="true"></div>
+    <div class="landing-inner">
+      <div class="landing-card form-card">
+        <h1 class="landing-title">Dashboard Keuangan</h1>
+        <p class="landing-subtitle">Ringkasan realtime dari sheet <em>Dashboard</em></p>
+
+        <div id="dash-cards" class="dash-grid">
+          <!-- diisi JS: total pendapatan, biaya material, gaji, kas, estimasi -->
+        </div>
+
+        <div class="chart-wrap">
+          <canvas id="chartPengeluaran" height="220"></canvas>
+        </div>
+
+        <div class="btn-row" style="margin-top:12px">
+          <button class="btn-outline" id="btnRefresh">Sinkron Sekarang</button>
+          <button class="submit-btn" id="gotoInput">Input Transaksi</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== LANDING 1 ===== -->
-  <section class="landing bg1" id="step1">
+  <section class="landing bg1 hidden" id="step1">
     <div class="overlay" aria-hidden="true"></div>
     <div class="landing-inner">
       <div class="logo-row landing-logos">
@@ -53,7 +77,6 @@
             </select>
           </div>
 
-          <!-- type="button" + id tetap -->
           <button id="toStep2" class="submit-btn wide" type="button">Masuk</button>
         </div>
       </div>
@@ -79,14 +102,39 @@
           <label for="proyek">Nama Proyek</label>
           <select id="proyek" data-nice required>
             <option value="Proyek Utama(Pembangunan Dapur)">Proyek Utama(Pembangunan Dapur)</option>
-            <option value="Proyek Pembenahan Lahan">Proyek Pembenahan Lahan</option>
+            <option value="Proyek Pengkondisian Lahan">Proyek Pengkondisian Lahan</option>
             <option value="Proyek Lainnya">Proyek Lainnya</option>
           </select>
         </div>
 
-        <div class="form-group">
+        <!-- Uraian umum -->
+        <div class="form-group" id="wrapUraian">
           <label for="uraian">Uraian</label>
-          <input type="text" id="uraian" placeholder="Contoh: Pembelian Semen 20 sak / Termin I" required/>
+          <input type="text" id="uraian" placeholder="Contoh: Pembelian Semen 20 sak / Termin I"/>
+        </div>
+
+        <!-- ===== DETAIL MATERIAL (tampil dinamis) ===== -->
+        <div id="materialBlock" class="mat-grid hidden">
+          <div class="form-group">
+            <label for="noFaktur">No. Faktur</label>
+            <input type="text" id="noFaktur" placeholder="INV-001"/>
+          </div>
+          <div class="form-group">
+            <label for="namaBarang">Nama Barang</label>
+            <input type="text" id="namaBarang" placeholder="Semen SCG"/>
+          </div>
+          <div class="form-group">
+            <label for="hargaSatuan">Harga Satuan</label>
+            <input type="text" id="hargaSatuan" inputmode="numeric" placeholder="Contoh: 70.000"/>
+          </div>
+          <div class="form-group">
+            <label for="qty">Qty</label>
+            <input type="number" id="qty" min="1" step="1" placeholder="10"/>
+          </div>
+          <div class="form-group">
+            <label for="totalHarga">Total</label>
+            <input type="text" id="totalHarga" inputmode="numeric" placeholder="otomatis" readonly/>
+          </div>
         </div>
 
         <div class="form-group">
@@ -99,10 +147,10 @@
           <select id="kreditor" data-nice>
             <option value="CV Alam Berkah Abadi">CV Alam Berkah Abadi</option>
             <option value="TB Berkah Naufal">TB Berkah Naufal</option>
-            <option value="CV Sari Doa (Cilawang)">CV Sari Doa (Cilawang)</option>
+            <option value="MATERIAL CILAWANG">MATERIAL CILAWANG</option>
             <option value="Galian Batu Pareang (Haji Agus)">Galian Batu Pareang (Haji Agus)</option>
             <option value="Warung Agil">Warung Agil</option>
-            <option value="__OTHER__">Lainnya… (ketik sendiri)</option>
+            <option value="_OTHER_">Lainnya… (ketik sendiri)</option>
           </select>
           <input type="text" id="kreditorLain" class="hidden" placeholder="Tulis nama Kreditor/Supplier"/>
         </div>
@@ -172,6 +220,11 @@
           <div class="preview-label">Kategori</div><div class="preview-value" id="pv-kategori"></div>
           <div class="preview-label">Tanggal</div><div class="preview-value" id="pv-tanggal"></div>
           <div class="preview-label">Proyek</div><div class="preview-value" id="pv-proyek"></div>
+
+          <!-- blok ringkas material -->
+          <div class="preview-label" id="pv-mat-label" style="display:none">Material</div>
+          <div class="preview-value" id="pv-mat-value" style="display:none"></div>
+
           <div class="preview-label">Uraian</div><div class="preview-value" id="pv-uraian"></div>
           <div class="preview-label">Nominal</div><div class="preview-value" id="pv-nominal"></div>
           <div class="preview-label">Kreditor/Supplier</div><div class="preview-value" id="pv-kreditor"></div>
@@ -207,7 +260,7 @@
     </div>
   </div>
 
-  <!-- ===== RESULT (error/sukses) ===== -->
+  <!-- ===== RESULT ===== -->
   <div class="overlay-pop" id="resultPop" aria-hidden="true">
     <div class="pop-card" id="resultCard">
       <button type="button" class="close-chip hidden" id="resultClose" aria-label="Tutup"></button>
@@ -221,7 +274,7 @@
     </div>
   </div>
 
-  <!-- ===== PICKER (dropdown modal) ===== -->
+  <!-- ===== PICKER ===== -->
   <div class="overlay-pop" id="pickerPop" aria-hidden="true">
     <div class="pop-card picker-card">
       <h4 id="pickerTitle">Pilih Opsi</h4>
@@ -232,6 +285,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

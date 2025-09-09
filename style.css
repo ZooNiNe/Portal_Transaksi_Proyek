@@ -117,3 +117,27 @@ svg .stroke{fill:none;stroke:#fff;stroke-width:6;stroke-linecap:round;stroke-lin
   .preview-label{text-align:left;font-size:.92rem}
   .preview-value{font-size:1rem}
 }
+
+/* ... (semua CSS Anda tetap) ... */
+
+/* Dashboard cards */
+.dash-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit,minmax(140px,1fr));
+  gap:10px; margin-bottom:10px
+}
+.dash-card{
+  border:1px solid #e7e9f2;border-radius:12px;padding:12px;background:#fff;
+  box-shadow:0 3px 10px rgba(16,24,40,.06)
+}
+.dash-card .label{color:#667085;font-size:.88rem}
+.dash-card .val{font-weight:700;font-size:1.05rem;color:#0f172a}
+
+/* Chart wrap */
+.chart-wrap{background:#fff;border:1px solid #e7e9f2;border-radius:12px;padding:10px}
+
+/* Material detail */
+.mat-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0
+}
+@media (max-width:560px){ .mat-grid{grid-template-columns:1fr} }
