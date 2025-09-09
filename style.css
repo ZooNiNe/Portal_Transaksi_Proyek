@@ -534,3 +534,185 @@ button:focus-visible, .nice-select:focus-visible, .btn-outline:focus-visible,
   body { background: #fff; color: #000; }
   .landing, .dashboard, .section, .table { box-shadow: none !important; }
 }
+
+/* === FIX/OVERRIDE DASHBOARD MOBILE LAYOUT === */
+
+/* 1) Header & logo row */
+.header-logos,
+.logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0 4px;
+}
+.logo-row .logo-3,
+.header-logos img {
+  width: 54px;
+  height: 54px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,.08));
+}
+@media (min-width: 640px){
+  .logo-row .logo-3,
+  .header-logos img { width: 68px; height: 68px; }
+}
+
+/* 2) Judul halaman */
+h1.page-title,
+.landing-title.main {
+  font-size: clamp(1.35rem, 5.5vw, 2.2rem);
+  line-height: 1.15;
+  margin: 4px 0 8px;
+}
+.subhead {
+  color:#475467;
+  font-size: .975rem;
+  margin-bottom: 10px;
+}
+
+/* 3) Bar tombol aksi utama */
+.action-bar{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin: 8px 0 10px;
+}
+.action-bar .btn,
+.action-bar .btn-outline,
+.action-bar .submit-btn{
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 12px;
+}
+
+/* 4) Pencarian global */
+.search-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin: 8px 0 12px;
+}
+.search-row input[type="search"],
+.search-row input[type="text"]{
+  flex:1 1 auto;
+  width:100%;
+  border:1px solid #d0d5dd;
+  border-radius:12px;
+  padding:12px 14px;
+  font-size: 0.98rem;
+  background:#fff;
+}
+.search-row .btn-outline{
+  white-space:nowrap;
+  padding: 10px 16px;
+}
+
+/* 5) Tag cepat / Prioritas */
+.tag-group{ display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 6px; }
+.chip, .tag{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 12px; border-radius:999px; font-weight:600;
+  border:1px solid #e5e7eb; background:#fff; color:#0f172a;
+}
+.chip.primary{ border-color:#b6c5ff; background:#eef2ff; color:#1f3bb3; }
+.chip .x{ opacity:.7; font-weight:700; cursor:pointer; }
+
+/* 6) Metrik ringkas jadi kartu 2 kolom */
+.metrics{
+  display:grid; grid-template-columns: 1fr 1fr; gap:10px;
+  margin: 10px 0 14px;
+}
+.metric-card{
+  background:#fff; border:1px solid #e7e9f2; border-radius:14px;
+  padding:12px; box-shadow:0 4px 12px rgba(16,24,40,.06);
+}
+.metric-card .label{ color:#667085; font-size:.86rem; }
+.metric-card .value{ font-weight:800; font-size:1.05rem; margin-top:4px; color:#0f172a; }
+@media (min-width:768px){
+  .metrics{ grid-template-columns: repeat(4,1fr); }
+}
+
+/* 7) Section judul besar */
+.section-title{
+  font-size: clamp(1.12rem, 4.2vw, 1.5rem);
+  font-weight: 800;
+  margin: 12px 0 10px;
+  color:#0f172a;
+}
+
+/* 8) Filter rentang waktu (dropdown + tombol) */
+.range-row{
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;
+}
+.range-row select{
+  padding:10px 12px; min-height:42px; border:1px solid #d0d5dd; border-radius:12px; background:#fff;
+}
+.range-row .btn-outline{ padding:10px 14px; }
+
+/* 9) Chart container: kasih tinggi supaya kelihatan */
+.chart-card{
+  background:#fff; border:1px solid #e7e9f2; border-radius:16px;
+  padding:10px; box-shadow:0 6px 18px rgba(16,24,40,.06);
+}
+.chart-box{ width:100%; height: 260px; }
+@media (min-width:640px){ .chart-box{ height: 320px; } }
+
+/* 10) Grup tombol rekap segmen */
+.pill-row{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 12px; }
+.pill{
+  border:1px solid #d0d5dd; border-radius:999px; padding:8px 12px;
+  background:#fff; color:#0f172a; font-weight:600; cursor:pointer;
+}
+.pill.active{ background:#eef2ff; color:#1f3bb3; border-color:#b6c5ff; }
+
+/* 11) Form Unduh Rekap */
+.download-card{
+  background:#fff; border:1px solid #e7e9f2; border-radius:16px;
+  padding:14px; box-shadow:0 6px 18px rgba(16,24,40,.06);
+}
+.form-grid{
+  display:grid; grid-template-columns: 1fr; gap:10px; align-items:center;
+}
+.form-grid label{ color:#667085; font-weight:600; }
+.form-grid select,.form-grid input{
+  width:100%; border:1px solid #d0d5dd; border-radius:12px; min-height:42px; padding:10px 12px; background:#fff;
+}
+.form-grid .submit-btn{ width:100%; }
+
+/* 12) Tekan ukuran font H1 mobile biar tak “menutupi” layar */
+@media (max-width:430px){
+  h1, .landing-title.main { font-size: 1.9rem; }
+}
+
+/* 13) Smooth scrolling untuk halaman panjang */
+html{ scroll-behavior:smooth; }
+
+/* 14) Perbaikan spacing umum */
+.section{ margin: 10px 0 14px; }
+.small-muted{ color:#667085; font-size:.86rem; }
+
+/* 15) Utility untuk garis pemisah ringan */
+.hr{
+  height:1px; background:linear-gradient(to right, transparent, #e9eef8, transparent);
+  margin: 10px 0;
+}
+
+/* 16) Sticky mini-toolbar (opsional jika ada) */
+.sticky-toolbar{
+  position:sticky; top:0; z-index: 30;
+  background: rgba(255,255,255,.9);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid #eef2f7;
+  padding: 8px 6px;
+}
+
+/* 17) Sentuhan micro-interaction tombol */
+button, .btn, .submit-btn, .btn-outline, .pill{
+  transition: transform .06s ease, box-shadow .2s ease;
+}
+button:active, .btn:active, .submit-btn:active, .pill:active{
+  transform: translateY(1px);
+}
