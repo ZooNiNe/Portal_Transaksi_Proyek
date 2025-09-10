@@ -1,649 +1,280 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-  <title>Portal Transaksi Proyek</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Portal Keuangan Proyek</title>
 
-  <!-- Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+  <!-- Chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <!-- SheetJS -->
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
 
-  <!-- Icons (Heroicons outline) -->
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
-  <link rel="stylesheet" href="style.css" />
-
-  <!-- Chart.js untuk dashboard -->
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-api="https://script.google.com/macros/s/AKfycbwLn3bi3DxH4T4rBouQdnXbSnfR6KF2dviiL2lEWAzHZb0h6ABOzne0K3k7RClckJJQ/exec">
 
-  <!-- ================== TOAST/ANNOUNCER (aria-live) ================== -->
-  <div id="liveRegion" class="sr-only" aria-live="polite"></div>
+  <!-- ===== Toast ===== -->
+  <div id="toast" class="toast"><span id="toastText">—</span></div>
 
-  <!-- ================== TOP APP BAR (mobile) ================== -->
-  <header class="appbar" id="appbar">
-    <button class="icon-btn" id="btnOpenMenu" aria-label="Menu">
-      <!-- menu icon -->
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M4 6h16M4 12h16M4 18h16" />
-      </svg>
-    </button>
-
-    <div class="appbar-title">
-      <img src="logo-main.png" alt="Logo" class="logo-main" />
-      <span id="appTitle">Portal Transaksi Proyek</span>
-    </div>
-
-    <button class="icon-btn" id="btnOpenSearch" aria-label="Cari">
-      <!-- search icon -->
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
-      </svg>
-    </button>
-  </header>
-
-  <!-- ================== SIDE DRAWER (menu) ================== -->
-  <aside id="drawer" class="drawer">
-    <div class="drawer-header">
-      <img src="logo-main.png" alt="Logo" class="logo-drawer" />
-      <div class="drawer-meta">
-        <strong id="drawerName">Nama Pengguna</strong>
-        <small id="drawerRole">Role</small>
+  <!-- Sidebar -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head">
+      <div class="sidebar-brand">
+        <img src="assets/logo-main.png" alt="Logo" class="brand-logo-sidebar"/>
+        <div class="brand-text-sidebar">
+          <strong>Portal Keuangan Proyek</strong>
+          <small>Transparan • Real-time</small>
+        </div>
       </div>
-      <button class="icon-btn" id="btnCloseMenu" aria-label="Tutup menu">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M6 6l12 12M6 18L18 6" />
-        </svg>
+      <button id="btnToggleNav" class="icon-btn" aria-label="Toggle Menu">
+        <span class="material-symbols-outlined">close</span>
       </button>
     </div>
-    <nav class="drawer-nav">
-      <button class="drawer-item" data-goto="home">
-        <span>Dashboard</span>
+
+    <nav class="nav">
+      <button class="nav-item active" data-nav="dashboard">
+        <span class="material-symbols-outlined">dashboard</span> Dashboard
       </button>
-      <button class="drawer-item" data-goto="step1" data-roles="ADMIN,OPS_OPERASIONAL,OPS_MATERIAL">
-        <span>Input Transaksi</span>
-      </button>
-      <button class="drawer-item" data-goto="rekap">
-        <span>Rekap & Unduh</span>
-      </button>
-      <button class="drawer-item" data-goto="absensi" data-roles="ADMIN,OPS_OPERASIONAL,OPS_MATERIAL">
-        <span>Absensi</span>
-      </button>
-      <button class="drawer-item" data-goto="akun">
-        <span>Akun & Pengaturan</span>
-      </button>
-      <hr />
-      <button class="drawer-item warn" id="btnLogout">
-        <span>Keluar</span>
+
+      <div class="nav-group">
+        <button class="nav-item" data-expand="input">
+          <span class="material-symbols-outlined">add_circle</span> Input Data
+          <span class="chev material-symbols-outlined">expand_more</span>
+        </button>
+        <div id="sub-input" class="subnav">
+          <button class="sub-item" data-nav="input-operasional">Belanja Operasional</button>
+          <button class="sub-item" data-nav="input-material">Belanja Material</button>
+          <button class="sub-item" data-nav="pemasukan">Pemasukan</button>
+          <button class="sub-item" data-nav="pembayaran">Pembayaran</button>
+          <button class="sub-item" data-nav="absensi">Absensi</button>
+        </div>
+      </div>
+
+      <div class="nav-group">
+        <button class="nav-item" data-expand="monitor">
+          <span class="material-symbols-outlined">monitoring</span> Monitoring
+          <span class="chev material-symbols-outlined">expand_more</span>
+        </button>
+        <div id="sub-monitor" class="subnav">
+          <button class="sub-item" data-nav="monitor-total">Total Arus Kas</button>
+          <button class="sub-item" data-nav="monitor-material">Kas Material</button>
+          <button class="sub-item" data-nav="monitor-operasional">Kas Operasional</button>
+          <button class="sub-item" data-nav="monitor-upah">Kas Upah/Gaji</button>
+        </div>
+      </div>
+
+      <button id="btnLogout" class="nav-item danger">
+        <span class="material-symbols-outlined">logout</span> Keluar
       </button>
     </nav>
+    <div class="sidebar-footer">
+      <small>Made by ZOoNiNe</small>
+    </div>
   </aside>
+  <div id="scrim" class="scrim"></div>
 
-  <!-- ================== MAIN CONTENT ================== -->
-  <main id="main">
-
-    <!-- ===== DASHBOARD (HOME) ===== -->
-    <section id="home" class="screen active">
-      <!-- Hero / header pindah ke dashboard sesuai revisi -->
-      <div class="dash-hero">
-        <img src="logo-main.png" alt="Logo" class="hero-logo" />
-        <div class="hero-text">
-          <h1>Dashboard Keuangan</h1>
-          <p id="serverTime">—</p>
-        </div>
-      </div>
-
-      <!-- Global search -->
-      <div class="search-wrap">
-        <input id="globalSearch" class="input" type="search" placeholder="Cari transaksi, vendor, atau tag..." />
-        <div class="quick-tags" id="quickTags">
-          <!-- diisi dinamis: Material, Upah, Operasional, Lunas, Belum Dibayar, dsb -->
-        </div>
-      </div>
-
-      <!-- KPI 2x2 (mobile) -->
-      <div class="kpi-grid" id="kpiGrid">
-        <div class="kpi">
-          <div class="kpi-label">Total Pendapatan</div>
-          <div class="kpi-value" id="kpiPendapatan">Rp 0</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Biaya Material</div>
-          <div class="kpi-value" id="kpiMaterial">Rp 0</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Biaya Gaji</div>
-          <div class="kpi-value" id="kpiGaji">Rp 0</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Kas Saat Ini</div>
-          <div class="kpi-value" id="kpiKas">Rp 0</div>
-        </div>
-      </div>
-
-      <!-- Ringkas hari ini -->
-      <div class="today-strip">
-        <div class="today-item">
-          <small>Saldo Hari Ini</small>
-          <strong id="saldoHariIni">Rp 0</strong>
-        </div>
-        <div class="today-item">
-          <small>Tagihan Hari Ini</small>
-          <strong id="tagihanHariIni">Rp 0</strong>
-        </div>
-        <div class="today-item">
-          <small>Pengeluaran Hari Ini</small>
-          <strong id="keluarHariIni">Rp 0</strong>
-        </div>
-      </div>
-
-      <!-- Chart -->
-      <div class="card">
-        <div class="card-head">
-          <h3>Pengeluaran 7 Hari</h3>
-          <button class="icon-btn" id="btnRefresh" aria-label="Refresh">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6" />
-            </svg>
-          </button>
-        </div>
-        <div class="chart-box">
-          <canvas id="chartPengeluaran" height="180"></canvas>
-        </div>
-      </div>
-
-      <!-- Panel Prioritas / Bookmark -->
-      <div class="card">
-        <div class="card-head">
-          <h3>Prioritas</h3>
-          <button class="text-btn" id="btnManageTags">Kelola Tag</button>
-        </div>
-        <ul id="prioList" class="list"></ul>
-      </div>
-
-      <!-- Quick actions (RBAC) -->
-      <div class="quick-actions">
-        <button class="qa" id="gotoInput" data-roles="ADMIN,OPS_OPERASIONAL,OPS_MATERIAL">
-          <span class="qa-ic">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-          </span>
-          <span>Input</span>
-        </button>
-        <button class="qa" data-goto="rekap">
-          <span class="qa-ic">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M7 7h10M7 12h10M7 17h6"/></svg>
-          </span>
-          <span>Rekap</span>
-        </button>
-        <button class="qa" data-goto="absensi" data-roles="ADMIN,OPS_OPERASIONAL,OPS_MATERIAL">
-          <span class="qa-ic">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 7h8M8 11h8M8 15h6"/><path d="M5 21h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H9l-4 4v12a2 2 0 0 0 2 2z"/></svg>
-          </span>
-          <span>Absensi</span>
-        </button>
-      </div>
-    </section>
-
-    <!-- ===== INPUT FLOW: STEP 1 ===== -->
-    <section id="step1" class="screen hidden">
-      <div class="landing bg1">
-        <div class="overlay" aria-hidden="true"></div>
-        <div class="landing-inner">
-          <div class="landing-card">
-            <h2 class="landing-title">Mulai Input</h2>
-            <p class="landing-subtitle">Pilih identitas, jenis & kategori</p>
-
-            <div class="form-group">
-              <label for="penginput">Penginput</label>
-              <select id="penginput" data-nice required>
-                <option>Oji</option><option>Bemo</option><option>Opi</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="jenis">Jenis Transaksi</label>
-              <select id="jenis" data-nice required>
-                <option>Pengeluaran</option><option>Pembayaran</option><option>Pemasukan</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="kategoriAwal">Kategori</label>
-              <select id="kategoriAwal" data-nice required>
-                <option value="Material">Material</option>
-                <option value="Operasional">Operasional</option>
-                <option value="Upah">Upah</option>
-                <option value="Lainnya">Lainnya</option>
-              </select>
-            </div>
-
-            <div class="btn-row">
-              <button class="btn-outline" id="backHome" type="button">Kembali</button>
-              <button class="submit-btn" id="toStep2" type="button">Input Data</button>
-            </div>
-          </div>
-
-          <p class="credit">dibuat oleh <strong>ZOoNiNe</strong> 2025</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== INPUT FLOW: STEP 2 (DI-NORMALKAN: material jadi rinci) ===== -->
-    <section id="step2" class="screen hidden">
-      <div class="landing bg2">
-        <div class="overlay" aria-hidden="true"></div>
-        <div class="landing-inner">
-          <div class="landing-card form-card">
-            <h2 class="landing-title">Detail Transaksi</h2>
-            <p class="landing-subtitle">Isi data sesuai kategori</p>
-
-            <div class="form-group">
-              <label for="tanggal">Tanggal</label>
-              <input type="date" id="tanggal" required />
-            </div>
-
-            <div class="form-group">
-              <label for="proyek">Nama Proyek</label>
-              <select id="proyek" data-nice required>
-                <!-- akan diisi via getConfig -->
-                <option value="Proyek Utama(Pembangunan Dapur)">Proyek Utama(Pembangunan Dapur)</option>
-                <option value="Proyek Pembenahan Lahan">Proyek Pembenahan Lahan</option>
-                <option value="Proyek Lainnya">Proyek Lainnya</option>
-              </select>
-            </div>
-
-            <!-- BLOK MATERIAL (dinamis tampil jika kategori=Material & jenis=Pengeluaran) -->
-            <div id="materialBlock" class="material-block hidden">
-              <div class="form-group">
-                <label for="noFaktur">No. Faktur</label>
-                <div class="row-inline">
-                  <input type="text" id="noFaktur" placeholder="Otomatis/Ganti manual" />
-                  <button class="btn-mini" id="btnGenFaktur" type="button">Ambil</button>
-                </div>
-                <small class="hint">No. Faktur global otomatis (bisa disesuaikan).</small>
-              </div>
-
-              <div class="form-grid-2">
-                <div class="form-group">
-                  <label for="namaBarang">Nama Barang</label>
-                  <input type="text" id="namaBarang" placeholder="Contoh: Semen 50 kg" />
-                </div>
-                <div class="form-group">
-                  <label for="qty">Qty</label>
-                  <input type="number" id="qty" min="0" inputmode="numeric" placeholder="0" />
-                </div>
-              </div>
-
-              <div class="form-grid-2">
-                <div class="form-group">
-                  <label for="hargaSatuan">Harga Satuan (Rp)</label>
-                  <input type="text" id="hargaSatuan" inputmode="numeric" placeholder="1.200.000" />
-                </div>
-                <div class="form-group">
-                  <label for="totalHarga">Total (Rp)</label>
-                  <input type="text" id="totalHarga" inputmode="numeric" placeholder="1.200.000" disabled />
-                </div>
-              </div>
-
-              <div class="row-inline">
-                <button class="btn-outline" id="btnPrevItem" type="button">Sebelumnya</button>
-                <button class="submit-btn" id="btnNextItem" type="button">Selanjutnya</button>
-              </div>
-
-              <div class="card mt8">
-                <div class="card-head">
-                  <h3>Item Faktur Ini</h3>
-                  <button class="text-btn" id="btnClearItem">Kosongkan</button>
-                </div>
-                <ul id="itemList" class="list"></ul>
-                <div class="total-line">
-                  <span>Subtotal Faktur</span>
-                  <strong id="subtotalFaktur">Rp 0</strong>
-                </div>
-              </div>
-            </div>
-
-            <!-- BLOK NON-MATERIAL -->
-            <div id="wrapUraian" class="form-group">
-              <label for="uraian">Uraian</label>
-              <input type="text" id="uraian" placeholder="Contoh: Termin I / BBM alat / dll" />
-            </div>
-
-            <div class="form-group">
-              <label for="kreditor">Kreditor / Supplier</label>
-              <select id="kreditor" data-nice>
-                <option value="CV Alam Berkah Abadi">CV Alam Berkah Abadi</option>
-                <option value="TB Berkah Naufal">TB Berkah Naufal</option>
-                <option value="CV Sari Doa (Cilawang)">CV Sari Doa (Cilawang)</option>
-                <option value="Galian Batu Pareang (Haji Agus)">Galian Batu Pareang (Haji Agus)</option>
-                <option value="Warung Agil">Warung Agil</option>
-                <option value="__OTHER__">Lainnya… (ketik sendiri)</option>
-              </select>
-              <input type="text" id="kreditorLain" class="hidden" placeholder="Tulis nama Kreditor/Supplier" />
-            </div>
-
-            <div class="form-group">
-              <label for="status">Status</label>
-              <select id="status" data-nice required>
-                <option>Sudah Dibayar</option>
-                <option>Belum Dibayar</option>
-              </select>
-            </div>
-
-            <!-- Nominal disembunyikan saat Material (pakai subtotal); tampil untuk non-material -->
-            <div class="form-group" id="wrapNominal">
-              <label for="nominal">Nominal (Rp)</label>
-              <input type="text" id="nominal" inputmode="numeric" placeholder="1.250.000" />
-            </div>
-
-            <div class="btn-row">
-              <button id="backTo1" class="btn-outline" type="button">Kembali</button>
-              <button id="toStep3" class="submit-btn" type="button">Lanjut ke Upload</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== INPUT FLOW: STEP 3 (Upload) ===== -->
-    <section id="step3" class="screen hidden">
-      <div class="landing bg3">
-        <div class="overlay" aria-hidden="true"></div>
-        <div class="landing-inner">
-          <div class="landing-card form-card">
-            <h2 class="landing-title">Lampiran Bukti</h2>
-            <p class="landing-subtitle">Unggah bukti sesuai kebutuhan</p>
-
-            <div id="wrapBon" class="form-group hidden">
-              <label for="buktiBon">Bukti Bon (Invoice)</label>
-              <input type="file" id="buktiBon" accept="image/*,application/pdf" multiple />
-            </div>
-
-            <div id="wrapSJ" class="form-group hidden">
-              <label for="buktiSJ">Bukti Surat Jalan</label>
-              <input type="file" id="buktiSJ" accept="image/*,application/pdf" multiple />
-            </div>
-
-            <div id="wrapBuktiUmum" class="form-group hidden">
-              <label for="buktiUmum">Bukti Transaksi</label>
-              <input type="file" id="buktiUmum" accept="image/*,application/pdf" multiple />
-            </div>
-
-            <div class="btn-row">
-              <button id="backTo2" class="btn-outline" type="button">Kembali</button>
-              <button id="openPreview" class="submit-btn" type="button">Kirim</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== REKAP LANDING ===== -->
-    <section id="rekap" class="screen hidden">
-      <div class="pane">
-        <h2>Rekap & Unduh</h2>
-
-        <div class="filter-grid">
-          <div class="form-group">
-            <label for="rekapRange">Rentang Tanggal</label>
-            <input type="date" id="rekapFrom" /> — <input type="date" id="rekapTo" />
-          </div>
-          <div class="form-group">
-            <label for="rekapProyek">Proyek</label>
-            <select id="rekapProyek" data-nice></select>
-          </div>
-          <div class="form-group">
-            <label for="rekapJenis">Jenis</label>
-            <select id="rekapJenis" data-nice>
-              <option value="">Semua</option>
-              <option>Pengeluaran</option>
-              <option>Pembayaran</option>
-              <option>Pemasukan</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="rekapKategori">Kategori</label>
-            <select id="rekapKategori" data-nice>
-              <option value="">Semua</option>
-              <option>Material</option>
-              <option>Operasional</option>
-              <option>Upah</option>
-              <option>Lainnya</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="btn-row">
-          <button class="btn-outline" id="btnLoadRekap" type="button">Terapkan</button>
-          <button class="submit-btn" id="btnExport" type="button">Unduh</button>
-        </div>
-
-        <div class="card mt8">
-          <div class="card-head"><h3>Hasil</h3></div>
-          <ul id="rekapList" class="list"></ul>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== ABSENSI LANDING (kerangka) ===== -->
-    <section id="absensi" class="screen hidden">
-      <div class="pane">
-        <h2>Absensi Harian</h2>
-        <div class="form-group">
-          <label for="absTanggal">Tanggal</label>
-          <input id="absTanggal" type="date" />
-        </div>
-        <div class="form-group">
-          <label for="absProyek">Proyek</label>
-          <select id="absProyek" data-nice></select>
-        </div>
-
-        <div class="form-group">
-          <label>Pilih Pegawai</label>
-          <input id="absCari" class="input" type="search" placeholder="Cari nama…" />
-          <ul id="absPegawaiList" class="list selectable"></ul>
-        </div>
-
-        <div class="form-group">
-          <label>Status</label>
-          <div class="chips" id="absStatus">
-            <button data-val="Masuk" class="chip active">Masuk</button>
-            <button data-val="Setengah Hari" class="chip">½ Hari</button>
-            <button data-val="Izin" class="chip">Izin</button>
-            <button data-val="Sakit" class="chip">Sakit</button>
-            <button data-val="Alpha" class="chip">Alpha</button>
-            <button data-val="Cuti" class="chip">Cuti</button>
-          </div>
-        </div>
-
-        <div class="form-grid-2">
-          <div class="form-group">
-            <label for="jamMasuk">Jam Masuk</label>
-            <input id="jamMasuk" type="time" />
-          </div>
-          <div class="form-group">
-            <label for="jamPulang">Jam Pulang</label>
-            <input id="jamPulang" type="time" />
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label for="lemburJam">Lembur (jam)</label>
-          <input id="lemburJam" type="number" min="0" max="8" step="0.5" />
-        </div>
-
-        <div class="btn-row">
-          <button class="btn-outline" id="absBackDash" type="button">Kembali</button>
-          <button class="submit-btn" id="absSubmit" type="button">Simpan Absensi</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- ===== AKUN & PENGATURAN ===== -->
-    <section id="akun" class="screen hidden">
-      <div class="pane">
-        <h2>Akun & Pengaturan</h2>
-        <div class="card">
-          <div class="row-between">
-            <div>
-              <div><strong id="accEmail">email</strong></div>
-              <small>Role: <span id="accRole">—</span></small>
-            </div>
-            <button class="btn-outline" id="btnSyncNow">Sinkron Sekarang</button>
-          </div>
-        </div>
-
-        <div class="card mt8">
-          <h3>Preferensi</h3>
-          <div class="form-group">
-            <label for="themeSel">Tema</label>
-            <select id="themeSel" data-nice>
-              <option value="auto">Otomatis</option>
-              <option value="light">Terang</option>
-              <option value="dark">Gelap</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="qualitySel">Kualitas Upload</label>
-            <select id="qualitySel" data-nice>
-              <option value="high">Tinggi</option>
-              <option value="medium" selected>Sedang</option>
-              <option value="low">Rendah</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="card mt8">
-          <h3>Tentang</h3>
-          <p>Versi App: <span id="appVersion">1.0.0</span></p>
-          <p>Credit: ZOoNiNe 2025</p>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- ================== BOTTOM BAR (5 tabs; Absensi di tengah) ================== -->
-  <nav class="bottombar" id="bottombar">
-    <button class="bb-item active" data-goto="home">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
-      <span>Home</span>
-    </button>
-    <button class="bb-item" data-goto="step1" data-roles="ADMIN,OPS_OPERASIONAL,OPS_MATERIAL">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-      <span>Input</span>
-    </button>
-    <button class="bb-item center" data-goto="absensi" data-roles="ADMIN,OPS_OPERASIONAL,OPS_MATERIAL">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 7h8M8 11h8M8 15h6"/><path d="M5 21h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H9l-4 4v12a2 2 0 0 0 2 2z"/></svg>
-      <span>Absensi</span>
-    </button>
-    <button class="bb-item" data-goto="rekap">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M7 7h10M7 12h10M7 17h6"/></svg>
-      <span>Rekap</span>
-    </button>
-    <button class="bb-item" data-goto="akun">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21a8 8 0 1 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>
-      <span>Akun</span>
-    </button>
-  </nav>
-
-  <!-- ================== PREVIEW MODAL (2-tab) ================== -->
-  <div class="modal-backdrop" id="previewModal">
-    <div class="modal-content">
-      <h3>Konfirmasi Data</h3>
-      <p>Periksa kembali sebelum mengirim.</p>
-
-      <div class="pv-steps">
-        <button id="pvTab1" class="pv-tab active" type="button">Ringkasan</button>
-        <button id="pvTab2" class="pv-tab" type="button">Lampiran</button>
-      </div>
-
-      <div class="preview-scroll pv-pane active" id="pvStep1">
-        <div class="preview-grid">
-          <div class="preview-label">Penginput</div><div class="preview-value" id="pv-penginput"></div>
-          <div class="preview-label">Jenis</div><div class="preview-value" id="pv-jenis"></div>
-          <div class="preview-label">Kategori</div><div class="preview-value" id="pv-kategori"></div>
-          <div class="preview-label">Tanggal</div><div class="preview-value" id="pv-tanggal"></div>
-          <div class="preview-label">Proyek</div><div class="preview-value" id="pv-proyek"></div>
-
-          <div class="preview-label" id="pv-mat-label" style="display:none">Rincian Material</div>
-          <div class="preview-value" id="pv-mat-value" style="display:none">—</div>
-
-          <div class="preview-label">Uraian</div><div class="preview-value" id="pv-uraian"></div>
-          <div class="preview-label">Nominal</div><div class="preview-value" id="pv-nominal"></div>
-          <div class="preview-label">Kreditor/Supplier</div><div class="preview-value" id="pv-kreditor"></div>
-          <div class="preview-label">Status</div><div class="preview-value" id="pv-status"></div>
-        </div>
-      </div>
-
-      <div class="preview-scroll pv-pane" id="pvStep2">
-        <div class="preview-foto-container">
-          <div class="preview-label">Lampiran</div>
-          <div id="pv-thumbs" class="thumbs-wrap"></div>
-          <span id="pv-bukti-kosong">Tidak ada berkas diupload.</span>
-        </div>
-      </div>
-
-      <div class="modal-buttons sticky-footer">
-        <div class="pv-nav">
-          <button type="button" class="btn-outline small hidden" id="pvBack">Kembali</button>
-          <button type="button" class="btn-outline small" id="pvNext">Lanjut</button>
-        </div>
-        <button type="button" class="btn-edit" id="cancel-btn">Ubah Data</button>
-        <button type="button" class="btn-confirm" id="confirm-btn">Ya, Kirim Sekarang</button>
-      </div>
+  <!-- ===== Main Pages ===== -->
+  <div class="content-wrapper">
+    <!-- Tombol untuk membuka sidebar di tampilan mobile -->
+    <div class="mobile-header">
+      <button id="btnOpenNav" class="icon-btn" aria-label="Buka Menu">
+          <span class="material-symbols-outlined">menu</span>
+      </button>
     </div>
+    
+    <main id="page-dashboard" class="page active">
+      <section class="row gap">
+        <div class="search">
+          <span class="material-symbols-outlined">search</span>
+          <input id="qGlobal" type="search" placeholder="Cari transaksi, vendor, atau tag…">
+        </div>
+      </section>
+
+      <section class="kpi-grid">
+        <article class="kpi"><p>Pendapatan</p><h3 id="kpiIncome">Rp 0</h3></article>
+        <article class="kpi"><p>Material</p><h3 id="kpiMaterial">Rp 0</h3></article>
+        <article class="kpi"><p>Gaji</p><h3 id="kpiGaji">Rp 0</h3></article>
+        <article class="kpi"><p>Kas</p><h3 id="kpiKas">Rp 0</h3></article>
+      </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h4>Pengeluaran 7 Hari</h4>
+          <button id="btnRefresh" class="icon-btn"><span class="material-symbols-outlined">refresh</span></button>
+        </div>
+        <canvas id="chart7" height="160"></canvas>
+      </section>
+    </main>
+
+    <!-- INPUT OPERASIONAL -->
+    <main id="page-input-operasional" class="page">
+      <h3>Belanja Operasional</h3>
+      <form id="form-operasional" class="form">
+        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="op-date" type="date"></label>
+        <label class="label"><span class="material-symbols-outlined">description</span> Uraian <input id="op-uraian" type="text" placeholder="Keterangan singkat…"></label>
+        <label class="label"><span class="material-symbols-outlined">payments</span> Nominal (Rp) <input id="op-nominal" type="number" min="0"></label>
+        <label class="label"><span class="material-symbols-outlined">person</span> Kreditor / Vendor <input id="op-kreditor" type="text"></label>
+        <label class="label"><span class="material-symbols-outlined">info</span> Status
+          <select id="op-status">
+            <option>Sudah Dibayar</option><option>Belum Dibayar</option><option>Tempo</option>
+          </select>
+        </label>
+        <label class="label"><span class="material-symbols-outlined">attach_file</span> Lampiran (opsional)
+          <input id="op-files" type="file" accept="image/*,.pdf" multiple>
+        </label>
+        <button class="btn btn-primary w-full">Kirim</button>
+      </form>
+    </main>
+
+    <!-- INPUT MATERIAL -->
+    <main id="page-input-material" class="page">
+      <h3>Belanja Material</h3>
+      <form id="form-material" class="form">
+        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="mt-date" type="date"></label>
+        <label class="label"><span class="material-symbols-outlined">note</span> No Faktur (global)
+          <input id="mt-faktur" type="text" placeholder="Otomatis" readonly>
+        </label>
+
+        <div class="grid-2">
+          <label class="label"><span class="material-symbols-outlined">inventory_2</span> Nama Barang <input id="mt-nama" type="text"></label>
+          <label class="label"><span class="material-symbols-outlined">pin</span> Qty <input id="mt-qty" type="number" min="0"></label>
+        </div>
+        <div class="grid-2">
+          <label class="label"><span class="material-symbols-outlined">payments</span> Harga Satuan (Rp) <input id="mt-harga" type="number" min="0"></label>
+          <label class="label"><span class="material-symbols-outlined">paid</span> Total (otomatis) <input id="mt-total" type="text" readonly></label>
+        </div>
+
+        <label class="label"><span class="material-symbols-outlined">person</span> Kreditor / Supplier <input id="mt-kreditor" type="text"></label>
+        <label class="label"><span class="material-symbols-outlined">info</span> Status
+          <select id="mt-status">
+            <option>Sudah Dibayar</option><option>Belum Dibayar</option><option>Tempo</option>
+          </select>
+        </label>
+
+        <div class="row">
+          <button id="mt-additem" type="button" class="btn">Tambah Item</button>
+          <button id="mt-clear"   type="button" class="btn btn-ghost">Bersihkan</button>
+        </div>
+        <div id="mt-items" class="items empty">Belum ada item.</div>
+
+        <label class="label"><span class="material-symbols-outlined">attach_file</span> Lampiran (Invoice & SJ digabung)
+          <input id="mt-files" type="file" accept="image/*,.pdf" multiple>
+        </label>
+
+        <button class="btn btn-primary w-full">Kirim</button>
+      </form>
+    </main>
+
+    <!-- PEMASUKAN -->
+    <main id="page-pemasukan" class="page">
+      <h3>Pemasukan</h3>
+      <form id="form-income" class="form">
+        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="in-date" type="date"></label>
+        <label class="label"><span class="material-symbols-outlined">account_balance_wallet</span> Sumber / Uraian <input id="in-uraian" type="text"></label>
+        <label class="label"><span class="material-symbols-outlined">payments</span> Nominal (Rp) <input id="in-nominal" type="number" min="0"></label>
+        <label class="label"><span class="material-symbols-outlined">attach_file</span> Lampiran (opsional) <input id="in-files" type="file" accept="image/*,.pdf" multiple></label>
+        <button class="btn btn-primary w-full">Kirim</button>
+      </form>
+    </main>
+
+    <!-- PEMBAYARAN -->
+    <main id="page-pembayaran" class="page">
+      <h3>Pembayaran</h3>
+      <form id="form-pay" class="form">
+        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="pay-date" type="date"></label>
+        <label class="label"><span class="material-symbols-outlined">sell</span> Jenis Bayar
+          <select id="pay-jenis">
+            <option>Bayar Tagihan Material</option><option>Bayar Pinjaman</option><option>Bayar Upah Kerja</option>
+          </select>
+        </label>
+        <label class="label"><span class="material-symbols-outlined">pin</span> Referensi (No Faktur/ID) <input id="pay-ref" type="text"></label>
+        <label class="label"><span class="material-symbols-outlined">person</span> Pihak / Kreditor <input id="pay-pihak" type="text"></label>
+        <label class="label"><span class="material-symbols-outlined">payments</span> Nominal (Rp) <input id="pay-nominal" type="number" min="0"></label>
+        <label class="label"><span class="material-symbols-outlined">credit_card</span> Metode
+          <select id="pay-metode"><option>Tunai</option><option>Transfer</option><option>QRIS</option></select>
+        </label>
+        <label class="label"><span class="material-symbols-outlined">attach_file</span> Bukti Pembayaran <input id="pay-files" type="file" accept="image/*,.pdf" multiple></label>
+        <button class="btn btn-primary w-full">Kirim</button>
+      </form>
+    </main>
+
+    <!-- ABSENSI -->
+    <main id="page-absensi" class="page">
+      <h3>Absensi</h3>
+      <form id="form-absen" class="form">
+        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="ab-date" type="date"></label>
+        <label class="label"><span class="material-symbols-outlined">business</span> Proyek <input id="ab-proyek" type="text" placeholder="Nama/Kode proyek"></label>
+        <label class="label"><span class="material-symbols-outlined">person</span> Pegawai <input id="ab-pegawai" type="text" placeholder="Nama pegawai"></label>
+        <label class="label"><span class="material-symbols-outlined">info</span> Status
+          <select id="ab-status">
+            <option>Masuk</option><option>Setengah Hari</option><option>Izin</option><option>Sakit</option><option>Alpha</option><option>Cuti</option>
+          </select>
+        </label>
+        <label class="label"><span class="material-symbols-outlined">schedule</span> Lembur (jam) <input id="ab-lembur" type="number" min="0" max="12"></label>
+        <label class="label"><span class="material-symbols-outlined">camera_alt</span> Foto (opsional) <input id="ab-foto" type="file" accept="image/*"></label>
+        <button class="btn btn-primary w-full">Simpan</button>
+      </form>
+    </main>
+
+    <!-- MONITOR TOTAL -->
+    <main id="page-monitor-total" class="page">
+      <h3>Total Arus Kas</h3>
+      <div class="row">
+        <select id="mon-range">
+          <option value="7">7 hari</option><option value="30" selected>30 hari</option><option value="90">90 hari</option>
+        </select>
+        <button id="mon-apply" class="btn">Terapkan</button>
+        <button id="btn-download-total" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
+      </div>
+      <div class="card"><canvas id="chartFlow" height="180"></canvas></div>
+    </main>
+
+    <!-- Placeholder monitor lainnya -->
+    <main id="page-monitor-material" class="page">
+      <h3>Kas Material</h3>
+      <div class="row">
+        <input type="date" id="mon-mat-start">
+        <input type="date" id="mon-mat-end">
+        <button id="mon-mat-apply" class="btn">Terapkan</button>
+        <button id="btn-download-material" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
+      </div>
+      <div class="card" id="tbl-material-container">
+        <p>Memuat data...</p>
+      </div>
+    </main>
+
+    <main id="page-monitor-operasional" class="page">
+      <h3>Kas Operasional</h3>
+      <div class="row">
+        <input type="date" id="mon-op-start">
+        <input type="date" id="mon-op-end">
+        <button id="mon-op-apply" class="btn">Terapkan</button>
+        <button id="btn-download-operasional" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
+      </div>
+      <div class="card" id="tbl-operasional-container">
+        <p>Memuat data...</p>
+      </div>
+    </main>
+    <main id="page-monitor-upah" class="page">
+      <h3>Kas Upah/Gaji</h3>
+      <div class="row">
+        <input type="date" id="mon-upah-start">
+        <input type="date" id="mon-upah-end">
+        <button id="mon-upah-apply" class="btn">Terapkan</button>
+        <button id="btn-download-upah" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
+      </div>
+      <div class="card" id="tbl-upah-container">
+        <p>Memuat data...</p>
+      </div>
+    </main>
   </div>
 
-  <!-- ================== GENERIC PICKER (Dropdown Modal) ================== -->
-  <div class="overlay-pop" id="pickerPop" aria-hidden="true">
-    <div class="pop-card picker-card">
-      <h4 id="pickerTitle">Pilih Opsi</h4>
-      <div id="pickerList" class="picker-list"></div>
-      <div class="picker-actions">
-        <button type="button" class="btn-outline" id="pickerCancel">Batal</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================== LOADING / RESULT POPUPS ================== -->
-  <div class="overlay-pop" id="loadingPop" aria-hidden="true">
-    <div class="pop-card">
-      <div class="spinner"></div>
-      <h4>Mengirim data…</h4>
-      <p>Mohon tunggu sebentar.</p>
-    </div>
-  </div>
-
-  <div class="overlay-pop" id="resultPop" aria-hidden="true">
-    <div class="pop-card" id="resultCard">
-      <button type="button" class="close-chip hidden" id="resultClose" aria-label="Tutup"></button>
-      <div id="resultIcon"></div>
-      <h4 id="resultTitle">Selesai</h4>
-      <p id="resultMsg">Data anda telah terinput.</p>
-      <div class="result-actions" id="resultActions">
-        <button type="button" class="btn-outline" id="btnKeluar">Keluar</button>
-        <button type="button" class="submit-btn" id="btnInputKembali">Input Kembali</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================== SEARCH POPUP ================== -->
-  <div class="overlay-pop" id="searchPop" aria-hidden="true">
-    <div class="pop-card search-card">
-      <h4>Pencarian</h4>
-      <input id="searchBox" class="input" type="search" placeholder="Cari kata kunci…" />
-      <ul id="searchResult" class="list mt8"></ul>
-      <div class="picker-actions">
-        <button type="button" class="btn-outline" id="btnCloseSearch">Tutup</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================== SCRIPTS ================== -->
-  <script defer src="script.js"></script>
+  <script src="script.js" defer></script>
 </body>
 </html>
-
