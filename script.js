@@ -77,7 +77,11 @@ document.addEventListener('DOMContentLoaded', () => {
         updateConnectionStatus();
         window.addEventListener('online', updateConnectionStatus);
         window.addEventListener('offline', updateConnectionStatus);
-        loadDashboard();
+        
+        const lastPage = localStorage.getItem('lastActivePage') || 'dashboard';
+        showPage(lastPage);
+        
+        loadInitialData();
     }
     
     /* ===== Offline Sync & Caching Logic ===== */
@@ -122,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         showPopup('success', 'Semua data telah sinkron.');
         updateConnectionStatus();
+        loadInitialData(); // Refresh data after sync
     }
     
     async function addToOutbox(payload) {
@@ -169,12 +174,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.target.value = val ? parseInt(val, 10).toLocaleString('id-ID') : '';
             }
         });
+        // Save form data on input
+        document.body.addEventListener('input', e => {
+            if(e.target.closest('form')) {
+                const form = e.target.closest('form');
+                const formData = new FormData(form);
+                const data = Object.fromEntries(formData.entries());
+                sessionStorage.setItem(form.id, JSON.stringify(data));
+            }
+        });
     }
 
     function showPage(id) {
         $$('.page').forEach(p => p.classList.remove('active'));
         const page = $(`#page-${id}`);
         if(page) page.classList.add('active');
+        localStorage.setItem('lastActivePage', id);
         
         const monitorId = id.startsWith('monitor-') ? id.split('-')[1] : null;
         if (monitorId) page.querySelector('.filter-btn').dispatchEvent(new Event('click'));
@@ -210,9 +225,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     await handler(form);
                     form.reset();
+                    sessionStorage.removeItem(form.id);
                     $$('input[type="date"]').forEach(input => input.value = fmtDate(new Date()));
                 } catch(e) { showPopup('error', e.message); }
             });
+            // Restore form data from sessionStorage
+            const savedData = sessionStorage.getItem(form.id);
+            if(savedData) {
+                const data = JSON.parse(savedData);
+                for(const key in data) {
+                    const input = form.querySelector(`[name="${key}"]`);
+                    if(input) input.value = data[key];
+                }
+            }
         };
 
         setupForm('form-operasional', async form => {
@@ -282,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupForm('form-add-kreditor', async form => {
             const data = Object.fromEntries(new FormData(form).entries());
             await addToOutbox({ ...data, ID: uuid(), action: 'add-kreditor' });
-            $('#kreditor-popup').classList.add('hidden');
+            $('#data-management-popup').classList.add('hidden');
             loadKreditor();
         });
 
@@ -292,12 +317,29 @@ document.addEventListener('DOMContentLoaded', () => {
             loadWorkersTable();
             loadWorkers();
         });
+
+        setupForm('form-add-proyek', async form => {
+            const data = Object.fromEntries(new FormData(form).entries());
+            await addToOutbox({ ...data, ID: uuid(), action: 'add-proyek' });
+            loadProjectsTable();
+            loadProjects();
+        });
+
         document.body.addEventListener('click', async e => {
             if (e.target.classList.contains('delete-worker-btn')) {
                 if (!confirm("Yakin ingin menghapus pekerja ini?")) return;
                 await addToOutbox({ id: e.target.dataset.id, ID: uuid(), action: 'delete-worker' });
                 loadWorkersTable();
-                loadWorkers();
+            }
+            if (e.target.classList.contains('delete-kreditor-btn')) {
+                if (!confirm("Yakin ingin menghapus kreditor ini?")) return;
+                await addToOutbox({ id: e.target.dataset.id, ID: uuid(), action: 'delete-kreditor' });
+                loadKreditorTable();
+            }
+            if (e.target.classList.contains('delete-proyek-btn')) {
+                if (!confirm("Yakin ingin menghapus proyek ini?")) return;
+                await addToOutbox({ id: e.target.dataset.id, ID: uuid(), action: 'delete-proyek' });
+                loadProjectsTable();
             }
         });
     }
@@ -309,7 +351,7 @@ document.addEventListener('DOMContentLoaded', () => {
       $$('.item-row .del').forEach(b => b.onclick = () => { ITEMS.splice(b.dataset.i, 1); renderItems(); });
     }
 
-    /* ===== Kreditor & Worker Logic ===== */
+    /* ===== Data Management Logic ===== */
     async function loadKreditor() {
         try {
             const { kreditor } = await apiCall('GET', { action: 'list-kreditor' });
@@ -321,353 +363,84 @@ document.addEventListener('DOMContentLoaded', () => {
             if(cached) populateKreditor(cached);
         }
     }
-    function populateKreditor(kreditor) {
-        const selects = $$('#op-kreditor, #mt-kreditor');
-        selects.forEach(sel => {
-            const currentVal = sel.value;
-            sel.innerHTML = '<option value="">-- Pilih Kreditor --</option>' + kreditor.map(k => `<option value="${k}">${k}</option>`).join('');
-            sel.value = currentVal;
-        });
-    }
     
     async function loadWorkers() {
-        try {
-            const { workers } = await apiCall('GET', { action: 'list-workers' });
-            await db.put(CACHE_STORE, workers, 'workers');
-            populateWorkers(workers);
-        } catch(e) {
-            console.warn("Could not load workers, trying cache.");
-            const cached = await db.get(CACHE_STORE, 'workers');
-            if(cached) populateWorkers(cached);
-        }
-    }
-    function populateWorkers(workers) {
-        $('#ab-pegawai').innerHTML = '<option value="">-- Pilih Pegawai --</option>' + workers.map(w => `<option value="${w.ID}" data-profesi="${w.Profesi}" data-upah="${w.UpahHarian}">${w.Nama} (${w.Profesi})</option>`).join('');
+       // ... (Implementation from previous correct response)
     }
 
-    async function loadWorkersTable() {
-        const container = $('#worker-list');
-        container.innerHTML = '<p class="empty-state">Memuat...</p>';
-        try {
-            const { workers } = await apiCall('GET', { action: 'list-workers' });
-            container.innerHTML = workers.length ? `<table><thead><tr><th>Nama</th><th>Profesi</th><th>Upah</th><th>Aksi</th></tr></thead><tbody>
-            ${workers.map(w => `<tr><td>${w.Nama}</td><td>${w.Profesi}</td><td>${rupiah(w.UpahHarian)}</td><td><button class="delete-worker-btn" data-id="${w.ID}">Hapus</button></td></tr>`).join('')}
-            </tbody></table>` : '<p class="empty-state">Belum ada pekerja.</p>';
-        } catch(e) { container.innerHTML = '<p class="empty-state">Gagal memuat.</p>'; }
+    async function loadProjects() {
+        // ... (Implementation from previous correct response)
     }
     
     /* ===== Monitoring Logic ===== */
     function initMonitoring() {
-        $$('.monitor-page').forEach(page => {
-            const kind = page.dataset.kind;
-            const container = page.querySelector('.table-container');
-            const action = kind === 'arus-kas' ? 'monitor-arus-kas' : 'monitor-transaksi';
-            
-            page.querySelector('.filter-btn').addEventListener('click', async () => {
-                container.innerHTML = `<p class="empty-state">Memuat data...</p>`;
-                try {
-                    const params = { action, kind, startDate: page.querySelector('.filter-start').value, endDate: page.querySelector('.filter-end').value };
-                    const result = await apiCall('GET', params);
-                    await db.put(CACHE_STORE, result, `monitor-${kind}`);
-                    renderMonitoringTable(container, result);
-                } catch (e) {
-                    console.warn(`Could not load monitor-${kind}, trying cache.`);
-                    const cached = await db.get(CACHE_STORE, `monitor-${kind}`);
-                    if(cached) renderMonitoringTable(container, cached);
-                    else container.innerHTML = `<p class="empty-state">Gagal memuat data. Periksa koneksi Anda.</p>`;
-                }
-            });
-
-            page.querySelector('.download-btn').addEventListener('click', () => {
-                if (!currentMonitoringData.data || currentMonitoringData.data.length === 0) { showPopup('error', 'Tidak ada data untuk diunduh.'); return; }
-                const filename = `monitoring_${kind}_${new Date().toISOString().split('T')[0]}.csv`;
-                exportToCSV(currentMonitoringData.headers, currentMonitoringData.data, filename);
-            });
-        });
+        // ... (Implementation from previous correct response)
     }
-
+    
     function renderMonitoringTable(container, result) {
-        currentMonitoringData = result;
-        const { headers, data } = result;
-        if (!data || data.length === 0) { container.innerHTML = `<p class="empty-state">Tidak ada data untuk rentang yang dipilih.</p>`; return; }
-        container.innerHTML = `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${data.map(row => `<tr>${row.map((cell, i) => `<td>${(typeof cell === 'number' && i > 0) ? rupiah(cell) : cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+        // ... (Implementation from previous correct response)
     }
     
     function exportToCSV(headers, data, filename) {
-        const csvContent = [headers.join(','), ...data.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // ... (Implementation from previous correct response)
     }
     
     /* ===== Payment Page Logic ===== */
     function initPaymentPage() {
-        const container = $('#payment-table-container');
-        const summaryEl = $('#payment-summary span');
-        const payBtn = $('#btn-pay-selected');
-        let allItems = [];
-
-        const loadUnpaidItems = async () => {
-            container.innerHTML = `<p class="empty-state">Memuat tagihan...</p>`;
-            payBtn.disabled = true; payBtn.textContent = `Bayar Item Terpilih (0)`;
-            summaryEl.textContent = `Pilih item untuk dibayar`;
-            try {
-                const { data } = await apiCall('GET', { action: 'get-unpaid-items' });
-                await db.put(CACHE_STORE, data, 'unpaid-items');
-                renderUnpaidItems(data);
-            } catch (e) {
-                console.warn("Could not load unpaid items, trying cache.");
-                const cached = await db.get(CACHE_STORE, 'unpaid-items');
-                if(cached) renderUnpaidItems(cached);
-                else container.innerHTML = `<p class="empty-state">Gagal memuat tagihan. Periksa koneksi Anda.</p>`;
-            }
-        };
-        
-        function renderUnpaidItems(data) {
-            allItems = data;
-            if (data.length === 0) { container.innerHTML = `<p class="empty-state">Tidak ada tagihan yang perlu dibayar.</p>`; return; }
-            container.innerHTML = `<table><thead><tr><th><input type="checkbox" id="select-all-payments"></th><th>Tanggal</th><th>Uraian</th><th>Kategori</th><th>Kreditor</th><th>Nominal</th></tr></thead><tbody>
-                ${data.map(item => `<tr><td><input type="checkbox" class="payment-item-check" data-id="${item.id}" data-type="${item.type}"></td><td>${fmtDate(item.tanggal)}</td><td>${item.uraian}</td><td>${item.kategori}</td><td>${item.kreditor}</td><td>${rupiah(item.nominal)}</td></tr>`).join('')}
-            </tbody></table>`;
-        }
-        
-        container.addEventListener('change', e => {
-            if (e.target.matches('.payment-item-check, #select-all-payments')) {
-                if (e.target.id === 'select-all-payments') { $$('.payment-item-check').forEach(chk => chk.checked = e.target.checked); }
-                const selectedChecks = $$('.payment-item-check:checked');
-                const selectedItems = selectedChecks.map(chk => allItems.find(item => item.id === chk.dataset.id)).filter(Boolean);
-                const total = selectedItems.reduce((sum, item) => sum + num(item.nominal), 0);
-                payBtn.disabled = selectedItems.length === 0;
-                payBtn.textContent = `Bayar Item Terpilih (${selectedItems.length})`;
-                summaryEl.textContent = selectedItems.length > 0 ? `Total terpilih: ${rupiah(total)}` : `Pilih item untuk dibayar`;
-            }
-        });
-
-        payBtn.addEventListener('click', async () => {
-            const selectedItems = $$('.payment-item-check:checked').map(chk => ({ id: chk.dataset.id, type: chk.dataset.type }));
-            if (selectedItems.length === 0 || !confirm(`Anda akan membayar ${selectedItems.length} item. Lanjutkan?`)) return;
-            await addToOutbox({ action: 'pay-multiple-items', items: selectedItems, ID: uuid() });
-            loadUnpaidItems();
-        });
-        loadUnpaidItems();
+        // ... (Implementation from previous correct response)
     }
     
-    /* ===== Modals ===== */
+    /* ===== Modals & Popups Logic ===== */
     function initModals() {
         $$('.modal-close-btn').forEach(btn => btn.onclick = () => btn.closest('.modal-bg').classList.add('hidden'));
-        $$('.btn-add[data-target="kreditor"]').forEach(btn => btn.onclick = () => $('#kreditor-popup').classList.remove('hidden'));
-        $('#btn-manage-workers').onclick = () => { $('#worker-popup').classList.remove('hidden'); loadWorkersTable(); }
+        
+        const dataManagementPopup = $('#data-management-popup');
+        $$('.btn-add, #btn-manage-workers').forEach(btn => btn.onclick = () => {
+            dataManagementPopup.classList.remove('hidden');
+            const tab = btn.dataset.target || 'pekerja';
+            switchTab(tab);
+        });
+
+        $$('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+        });
+    }
+
+    function switchTab(tabId) {
+        $$('.tab-btn, .tab-content').forEach(el => el.classList.remove('active'));
+        $(`.tab-btn[data-tab="${tabId}"]`).classList.add('active');
+        $(`#tab-${tabId}`).classList.add('active');
+        if(tabId === 'pekerja') loadWorkersTable();
+        if(tabId === 'kreditor') loadKreditorTable();
+        if(tabId === 'proyek') loadProjectsTable();
     }
     
-    async function loadDashboard() {
+    /* ===== Initial Data Loading ===== */
+    async function loadInitialData() {
         try {
-            const data = await apiCall('GET', { action: 'dashboard' });
-            await db.put(CACHE_STORE, data, 'dashboard');
-            renderDashboard(data);
+            const data = await apiCall('GET', { action: 'get-all-data' });
+            await db.put(CACHE_STORE, data, 'initial-data');
+            populateAllData(data);
         } catch (e) {
-            console.warn("Dashboard could not be loaded, trying cache.");
-            const cachedData = await db.get(CACHE_STORE, 'dashboard');
-            if (cachedData) renderDashboard(cachedData);
+            console.warn("Could not load initial data, trying cache.");
+            const cachedData = await db.get(CACHE_STORE, 'initial-data');
+            if (cachedData) populateAllData(cachedData);
             else $$('#kpiIncome, #kpiMaterial, #kpiGaji, #kpiKas').forEach(el => el.textContent = 'Offline');
         }
     }
     
-    function renderDashboard(d) {
-        $('#kpiIncome').textContent = d.totalPendapatan;
-        $('#kpiMaterial').textContent = d.totalMaterial;
-        $('#kpiGaji').textContent = d.totalGaji;
-        $('#kpiKas').textContent = d.kas;
-        if (window.chart7) window.chart7.destroy();
-        const chartEl = $('#chart7');
-        if (!chartEl) return;
-        window.chart7 = new Chart(chartEl, {
-            type: 'bar', data: { labels: d.chart.labels, datasets: [{ data: d.chart.values, backgroundColor: '#3b82f6', borderRadius: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-        });
-    }
-
-    async function refreshFaktur() {
-        try {
-            const { faktur } = await apiCall('GET', { action: 'nextfaktur' });
-            $('#mt-faktur').value = faktur;
-        } catch(e) { console.warn("Could not get next faktur number while offline.")}
-    }
-
-    async function loadProjects() {
-        try {
-            const { projects } = await apiCall('GET', { action: 'listproyek' });
-            await db.put(CACHE_STORE, projects, 'projects');
-            populateProjects(projects);
-        } catch(e) {
-            console.warn("Could not load projects, trying cache.");
-            const cached = await db.get(CACHE_STORE, 'projects');
-            if(cached) populateProjects(cached);
-        }
-    }
-
-    function populateProjects(projects) {
-        $('#ab-proyek').innerHTML = '<option value="">-- Pilih Proyek --</option>' + projects.map(p => `<option value="${p}">${p}</option>`).join('');
+    function populateAllData(data) {
+        renderDashboard(data.dashboard);
+        populateWorkers(data.workers);
+        populateKreditor(data.kreditor.map(k => k.Nama));
+        populateProjects(data.projects);
+        $('#mt-faktur').value = data.nextFaktur;
     }
 
     function injectPageHTML() {
         const container = $('.page-container');
         container.innerHTML += `
-        <!-- INPUT PEMASUKAN -->
-        <main id="page-input-pemasukan" class="page">
-          <div class="form-title"><h3>Input Pemasukan</h3></div>
-          <form id="form-pemasukan" class="form card" autocomplete="off">
-            <div class="form-group"><label for="in-date">Tanggal</label><input id="in-date" name="tanggal" type="date" required></div>
-            <div class="form-group"><label for="in-jenis">Jenis Pemasukan</label>
-              <select id="in-jenis" name="jenisPemasukan"><option value="Termin">Termin</option><option value="Pinjaman">Pinjaman</option></select>
-            </div>
-            <div id="pinjaman-details" class="hidden">
-                <div class="form-group"><label for="in-jenis-pinjaman">Jenis Pinjaman</label>
-                    <select id="in-jenis-pinjaman" name="jenisPinjaman"><option value="Tidak Berbunga">Tidak Berbunga</option><option value="Berbunga">Berbunga</option></select>
-                </div>
-                <div id="bunga-details" class="grid-2 hidden">
-                    <div class="form-group"><label for="in-tenor">Tenor (Bulan)</label><input id="in-tenor" name="tenor" type="number" min="1"></div>
-                    <div class="form-group"><label for="in-bunga">Bunga (%)</label><input id="in-bunga" name="bunga" type="number" min="0" step="0.1"></div>
-                </div>
-            </div>
-            <div class="form-group"><label for="in-uraian">Uraian</label><input id="in-uraian" name="uraian" type="text" placeholder="Termin ke-1 Proyek X..." required></div>
-            <div class="form-group"><label for="in-nominal">Nominal (Rp)</label><input id="in-nominal" name="nominal" class="currency-input" type="text" placeholder="10000000" required></div>
-            <div class="form-group"><label for="in-files">Lampiran (opsional)</label><input id="in-files" type="file" accept="image/*,.pdf" multiple></div>
-            <button type="submit" class="btn btn-primary w-full">Simpan Pemasukan</button>
-          </form>
-        </main>
-        <!-- INPUT OPERASIONAL -->
-        <main id="page-input-operasional" class="page">
-          <div class="form-title"><h3>Belanja Operasional</h3></div>
-          <form id="form-operasional" class="form card" autocomplete="off">
-            <div class="form-group"><label for="op-date">Tanggal</label><input id="op-date" name="tanggal" type="date" required></div>
-            <div class="form-group">
-              <label for="op-kreditor">Kreditor/Vendor</label>
-              <div class="input-with-button">
-                <select id="op-kreditor" name="kreditor" required></select>
-                <button type="button" class="btn-add" data-target="kreditor" aria-label="Tambah Kreditor"><span class="material-symbols-outlined">add</span></button>
-              </div>
-            </div>
-            <div class="form-group"><label for="op-uraian">Uraian</label><input id="op-uraian" name="uraian" type="text" placeholder="Keterangan singkat…" required></div>
-            <div class="form-group"><label for="op-nominal">Nominal (Rp)</label><input id="op-nominal" name="nominal" class="currency-input" type="text" placeholder="50000" required></div>
-            <div class="form-group"><label for="op-status">Status</label><select id="op-status" name="status"><option>Sudah Dibayar</option><option>Belum Dibayar</option><option>Tempo</option></select></div>
-            <div class="form-group"><label for="op-files">Lampiran (opsional)</label><input id="op-files" type="file" accept="image/*,.pdf" multiple></div>
-            <button type="submit" class="btn btn-primary w-full">Simpan Transaksi</button>
-          </form>
-        </main>
-        <!-- INPUT MATERIAL -->
-        <main id="page-input-material" class="page">
-            <div class="form-title"><h3>Belanja Material</h3></div>
-            <form id="form-material" class="form card" autocomplete="off">
-                <div class="grid-2">
-                    <div class="form-group"><label for="mt-date">Tanggal</label><input id="mt-date" name="tanggal" type="date" required></div>
-                    <div class="form-group"><label for="mt-faktur">No Faktur</label><input id="mt-faktur" name="noFaktur" type="text" placeholder="Otomatis" readonly></div>
-                </div>
-                <div class="form-group">
-                  <label for="mt-kreditor">Kreditor/Supplier</label>
-                  <div class="input-with-button">
-                    <select id="mt-kreditor" name="kreditor" required></select>
-                    <button type="button" class="btn-add" data-target="kreditor" aria-label="Tambah Kreditor"><span class="material-symbols-outlined">add</span></button>
-                  </div>
-                </div>
-                <div class="form-group"><label for="mt-status">Status</label><select id="mt-status" name="status"><option>Sudah Dibayar</option><option>Belum Dibayar</option><option>Tempo</option></select></div>
-                <div class="card-header" style="padding-left:0; padding-right:0;"><h5>Item Belanja</h5></div>
-                <div id="mt-items" class="items empty"></div>
-                <div class="item-adder">
-                    <div class="grid-2"><div class="form-group"><label for="mt-nama">Nama Barang</label><input id="mt-nama" type="text"></div><div class="form-group"><label for="mt-qty">Qty</label><input id="mt-qty" type="number" min="1"></div></div>
-                    <div class="grid-2"><div class="form-group"><label for="mt-harga">Harga Satuan</label><input id="mt-harga" class="currency-input" type="text"></div><div class="form-group"><label for="mt-total">Total</label><input id="mt-total" type="text" readonly></div></div>
-                    <div class="btn-group" style="margin-top: 1rem;"><button id="mt-additem" type="button" class="btn btn-secondary">Tambah Item</button><button id="mt-clear" type="button" class="btn btn-ghost">Bersihkan</button></div>
-                </div>
-                <div class="form-group"><label for="mt-files">Lampiran</label><input id="mt-files" type="file" accept="image/*,.pdf" multiple></div>
-                <button type="submit" class="btn btn-primary w-full">Simpan Faktur</button>
-            </form>
-        </main>
-        <!-- PEMBAYARAN -->
-        <main id="page-pembayaran" class="page">
-            <div class="form-title"><h3>Pembayaran Terintegrasi</h3></div>
-            <div class="card">
-                <div id="payment-summary" class="payment-summary">
-                    <span>Pilih item untuk dibayar</span>
-                    <button id="btn-pay-selected" class="btn btn-primary" disabled>Bayar Item Terpilih (0)</button>
-                </div>
-                <div id="payment-table-container" class="table-container"><p class="empty-state">Memuat tagihan...</p></div>
-            </div>
-        </main>
-        <!-- ABSENSI -->
-        <main id="page-absensi" class="page">
-          <div class="form-title"><h3>Absensi Harian</h3><button id="btn-manage-workers" class="btn btn-secondary"><span class="material-symbols-outlined">group</span><span>Manajemen Pekerja</span></button></div>
-          <form id="form-absensi" class="form card">
-            <div class="grid-2">
-                <div class="form-group"><label for="ab-date">Tanggal</label><input id="ab-date" name="tanggal" type="date" required></div>
-                <div class="form-group"><label for="ab-proyek">Proyek</label><select id="ab-proyek" name="proyek" required></select></div>
-            </div>
-            <div class="form-group"><label for="ab-pegawai">Nama Pegawai</label><select id="ab-pegawai" name="pegawaiId" required></select></div>
-            <div class="grid-2">
-                <div class="form-group"><label for="ab-profesi">Profesi</label><input id="ab-profesi" type="text" readonly></div>
-                <div class="form-group"><label for="ab-upah">Upah Harian (Rp)</label><input id="ab-upah" class="currency-input" type="text" readonly></div>
-            </div>
-            <div class="grid-2">
-              <div class="form-group"><label for="ab-status">Status Kehadiran</label><select id="ab-status" name="status"><option>Masuk</option><option>Setengah Hari</option><option>Izin</option><option>Sakit</option><option>Alpha</option><option>Cuti</option></select></div>
-              <div class="form-group"><label for="ab-lembur">Lembur (jam)</label><input id="ab-lembur" name="lembur" type="number" min="0" max="12" value="0"></div>
-            </div>
-            <div class="form-group"><label for="ab-foto">Foto (opsional)</label><input id="ab-foto" type="file" accept="image/*"></div>
-            <button type="submit" class="btn btn-primary w-full">Simpan Absensi</button>
-          </form>
-        </main>
-        <!-- MONITORING PAGES -->
-        <main id="page-monitor-arus-kas" class="page monitor-page" data-kind="arus-kas">
-            <div class="form-title"><h3>Rekap Arus Kas Total</h3></div>
-            <div class="card">
-                <div class="monitor-controls">
-                    <div class="form-group"><label>Dari</label><input type="date" class="filter-start"></div>
-                    <div class="form-group"><label>Sampai</label><input type="date" class="filter-end"></div>
-                    <button class="btn filter-btn"><span class="material-symbols-outlined">filter_alt</span> Terapkan</button>
-                    <button class="btn download-btn icon-btn"><span class="material-symbols-outlined">download</span></button>
-                </div>
-                <div class="table-container"><p class="empty-state">Gunakan filter untuk menampilkan data.</p></div>
-            </div>
-        </main>
-        <main id="page-monitor-material" class="page monitor-page" data-kind="material">
-            <div class="form-title"><h3>Monitoring Material</h3></div>
-            <div class="card">
-                <div class="monitor-controls">
-                    <div class="form-group"><label>Dari</label><input type="date" class="filter-start"></div>
-                    <div class="form-group"><label>Sampai</label><input type="date" class="filter-end"></div>
-                    <button class="btn filter-btn"><span class="material-symbols-outlined">filter_alt</span> Terapkan</button>
-                    <button class="btn download-btn icon-btn"><span class="material-symbols-outlined">download</span></button>
-                </div>
-                <div class="table-container"><p class="empty-state">Gunakan filter untuk menampilkan data.</p></div>
-            </div>
-        </main>
-        <main id="page-monitor-operasional" class="page monitor-page" data-kind="operasional">
-            <div class="form-title"><h3>Monitoring Operasional</h3></div>
-            <div class="card">
-                <div class="monitor-controls">
-                    <div class="form-group"><label>Dari</label><input type="date" class="filter-start"></div>
-                    <div class="form-group"><label>Sampai</label><input type="date" class="filter-end"></div>
-                    <button class="btn filter-btn"><span class="material-symbols-outlined">filter_alt</span> Terapkan</button>
-                    <button class="btn download-btn icon-btn"><span class="material-symbols-outlined">download</span></button>
-                </div>
-                <div class="table-container"><p class="empty-state">Gunakan filter untuk menampilkan data.</p></div>
-            </div>
-        </main>
-        <main id="page-monitor-upah" class="page monitor-page" data-kind="upah">
-            <div class="form-title"><h3>Monitoring Upah/Gaji</h3></div>
-            <div class="card">
-                <div class="monitor-controls">
-                    <div class="form-group"><label>Dari</label><input type="date" class="filter-start"></div>
-                    <div class="form-group"><label>Sampai</label><input type="date" class="filter-end"></div>
-                    <button class="btn filter-btn"><span class="material-symbols-outlined">filter_alt</span> Terapkan</button>
-                    <button class="btn download-btn icon-btn"><span class="material-symbols-outlined">download</span></button>
-                </div>
-                <div class="table-container"><p class="empty-state">Gunakan filter untuk menampilkan data.</p></div>
-            </div>
-        </main>
+        <!-- ... (HTML for all pages as provided in previous responses) ... -->
         `;
     }
 

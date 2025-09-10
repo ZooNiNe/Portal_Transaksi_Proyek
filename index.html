@@ -87,32 +87,50 @@
   
   <!-- Pop-ups -->
   <div id="popup-container" class="popup-container"><div class="popup-content"><span id="popup-icon"></span><p id="popup-message"></p></div></div>
-  <div id="kreditor-popup" class="modal-bg hidden">
+  <div id="data-management-popup" class="modal-bg hidden">
     <div class="modal-content">
-      <div class="modal-header"><h4>Tambah Kreditor</h4><button class="modal-close-btn">&times;</button></div>
+      <div class="modal-header"><h4>Pusat Data</h4><button class="modal-close-btn">&times;</button></div>
       <div class="modal-body">
-        <form id="form-add-kreditor" class="form">
-          <div class="form-group"><label for="kreditor-name">Nama Kreditor/Vendor</label><input id="kreditor-name" name="nama" type="text" required></div>
-          <button type="submit" class="btn btn-primary w-full">Simpan</button>
-        </form>
+        <div class="tab-buttons">
+          <button class="tab-btn active" data-tab="pekerja">Pekerja</button>
+          <button class="tab-btn" data-tab="kreditor">Kreditor</button>
+          <button class="tab-btn" data-tab="proyek">Proyek</button>
+        </div>
+        <div class="tab-content active" id="tab-pekerja">
+          <form id="form-add-worker" class="form">
+              <h5>Tambah Pekerja Baru</h5>
+              <div class="form-group"><label>Nama Pegawai</label><input name="nama" type="text" required></div>
+              <div class="form-group"><label>Profesi</label><input name="profesi" type="text" required></div>
+              <div class="form-group"><label>Upah Harian (Rp)</label><input name="upah" type="number" inputmode="numeric" min="0" required></div>
+              <button type="submit" class="btn btn-primary w-full">Tambah Pekerja</button>
+          </form>
+          <div class="card"><h5 class="card-header">Daftar Pekerja</h5><div id="worker-list" class="table-container"></div></div>
+        </div>
+        <div class="tab-content" id="tab-kreditor">
+          <form id="form-add-kreditor" class="form">
+              <h5>Tambah Kreditor Baru</h5>
+              <div class="form-group"><label>Nama Kreditor/Vendor</label><input name="nama" type="text" required></div>
+              <button type="submit" class="btn btn-primary w-full">Tambah Kreditor</button>
+          </form>
+          <div class="card"><h5 class="card-header">Daftar Kreditor</h5><div id="kreditor-list" class="table-container"></div></div>
+        </div>
+        <div class="tab-content" id="tab-proyek">
+          <form id="form-add-proyek" class="form">
+              <h5>Tambah Proyek Baru</h5>
+              <div class="form-group"><label>Nama Proyek</label><input name="nama" type="text" required></div>
+              <button type="submit" class="btn btn-primary w-full">Tambah Proyek</button>
+          </form>
+          <div class="card"><h5 class="card-header">Daftar Proyek</h5><div id="proyek-list" class="table-container"></div></div>
+        </div>
       </div>
     </div>
   </div>
-  <div id="worker-popup" class="modal-bg hidden">
+  <div id="custom-select-popup" class="modal-bg hidden">
       <div class="modal-content">
-          <div class="modal-header"><h4>Manajemen Pekerja</h4><button class="modal-close-btn">&times;</button></div>
+          <div class="modal-header"><h4 id="custom-select-title">Pilih Opsi</h4><button class="modal-close-btn">&times;</button></div>
           <div class="modal-body">
-              <form id="form-add-worker" class="form">
-                  <h5>Tambah Pekerja Baru</h5>
-                  <div class="form-group"><label for="worker-name">Nama Pegawai</label><input id="worker-name" name="nama" type="text" required></div>
-                  <div class="form-group"><label for="worker-profesi">Profesi</label><input id="worker-profesi" name="profesi" type="text" required></div>
-                  <div class="form-group"><label for="worker-upah">Upah Harian (Rp)</label><input id="worker-upah" name="upah" type="number" min="0" required></div>
-                  <button type="submit" class="btn btn-primary w-full">Tambah</button>
-              </form>
-              <div class="card" style="margin-top: 1.5rem;">
-                  <h5 class="card-header">Daftar Pekerja</h5>
-                  <div id="worker-list" class="table-container"></div>
-              </div>
+              <input type="search" id="custom-select-search" class="form-input" placeholder="Cari opsi...">
+              <div id="custom-select-options" class="custom-select-options"></div>
           </div>
       </div>
   </div>
