@@ -57,7 +57,7 @@ input,select{width:100%; padding:12px 14px; border-radius:12px; border:1px solid
 .brand-text-sidebar strong{font-weight:800; font-size:16px;}
 .brand-text-sidebar small{color:var(--muted); font-size:12px;}
 .nav{display:flex; flex-direction:column; gap:8px; padding:10px; overflow-y: auto;}
-.nav-item{display:flex; align-items:center; gap:10px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#fff; font-weight:700; cursor:pointer; width: 100%;}
+.nav-item{display:flex; align-items:center; justify-content: start; gap:10px; padding:12px; border:1px solid var(--line); border-radius:12px; background:#fff; font-weight:700; cursor:pointer; width: 100%;}
 .nav-item.active{border-color:#bcd8ff; background:#f5fbff}
 .nav-item.danger{color:#d93025; background:#fff0f0; border-color:#ffd5d5}
 .nav-group .subnav{display:none; padding-left:40px; gap:8px; flex-direction:column}
@@ -128,7 +128,6 @@ input,select{width:100%; padding:12px 14px; border-radius:12px; border:1px solid
   word-wrap: normal;
   direction: ltr;
   -webkit-font-feature-settings: 'liga';
-  font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
 }
 

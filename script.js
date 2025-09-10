@@ -116,8 +116,10 @@ async function loadDashboard(){
       options:{ responsive:true, maintainAspectRatio:false }
     });
   }catch(e){ console.error(e); showToast('Gagal memuat dashboard'); }
+};
+if ($('#btnRefresh')) {
+  $('#btnRefresh').onclick = loadDashboard;
 }
-$('#btnRefresh').onclick = loadDashboard;
 loadDashboard();
 
 /* ===== Input: Operasional ===== */
@@ -147,22 +149,28 @@ let ITEMS = []; // {nama, qty, harga, total}
 const mtHarga = $('#mt-harga'), mtQty = $('#mt-qty'), mtTotal = $('#mt-total');
 
 function calcTotal(){ const q=Number(mtQty.value||0), h=Number(mtHarga.value||0); mtTotal.value = q && h ? (q*h) : ''; }
-mtQty.oninput = calcTotal; mtHarga.oninput = calcTotal;
+if (mtQty) mtQty.oninput = calcTotal;
+if (mtHarga) mtHarga.oninput = calcTotal;
 
-$('#mt-additem').onclick = ()=>{
-  const nama = $('#mt-nama').value.trim();
-  const qty  = Number($('#mt-qty').value||0);
-  const harga= Number($('#mt-harga').value||0);
-  if(!nama || !qty || !harga) return showToast('Lengkapi item');
-  const total = qty*harga;
-  ITEMS.push({nama, qty, harga, total});
-  renderItems();
-  $('#mt-nama').value=''; $('#mt-qty').value=''; $('#mt-harga').value=''; $('#mt-total').value='';
-};
-$('#mt-clear').onclick = ()=>{ ITEMS=[]; renderItems(); };
+if ($('#mt-additem')) {
+  $('#mt-additem').onclick = ()=>{
+    const nama = $('#mt-nama').value.trim();
+    const qty  = Number($('#mt-qty').value||0);
+    const harga= Number($('#mt-harga').value||0);
+    if(!nama || !qty || !harga) return showToast('Lengkapi item');
+    const total = qty*harga;
+    ITEMS.push({nama, qty, harga, total});
+    renderItems();
+    $('#mt-nama').value=''; $('#mt-qty').value=''; $('#mt-harga').value=''; $('#mt-total').value='';
+  };
+}
+if ($('#mt-clear')) {
+  $('#mt-clear').onclick = ()=>{ ITEMS=[]; renderItems(); };
+}
 
 function renderItems(){
   const box = $('#mt-items');
+  if (!box) return;
   if (!ITEMS.length){ box.classList.add('empty'); box.innerHTML='Belum ada item.'; return; }
   box.classList.remove('empty');
   box.innerHTML = ITEMS.map((it,i)=>`
@@ -180,112 +188,128 @@ function renderItems(){
 
 // faktur otomatis
 async function refreshFaktur(){
-  try{ const r = await apiGet({action:'nextfaktur'}); $('#mt-faktur').value = r.faktur || ''; }catch(_){}
+  try{ 
+    const r = await apiGet({action:'nextfaktur'});
+    if ($('#mt-faktur')) {
+      $('#mt-faktur').value = r.faktur || '';
+    }
+  }catch(_){}
 }
 refreshFaktur();
 
-$('#form-material').addEventListener('submit', async (ev)=>{
-  ev.preventDefault();
-  if (!ITEMS.length) return showToast('Tambahkan item');
-  const files = $('#mt-files').files || [];
-  const buktiInvoice = [];
-  for (const f of files){ buktiInvoice.push({name:f.name, type:f.type, base64: await toBase64(f)}); }
+if ($('#form-material')) {
+  $('#form-material').addEventListener('submit', async (ev)=>{
+    ev.preventDefault();
+    if (!ITEMS.length) return showToast('Tambahkan item');
+    const files = $('#mt-files').files || [];
+    const buktiInvoice = [];
+    for (const f of files){ buktiInvoice.push({name:f.name, type:f.type, base64: await toBase64(f)}); }
 
-  const res = await apiPost({
-    action:'submit',
-    penginput:'webapp',
-    jenis:'Pengeluaran', kategori:'Material',
-    tanggal: $('#mt-date').value,
-    noFaktur: $('#mt-faktur').value,
-    kreditor: $('#mt-kreditor').value,
-    status: $('#mt-status').value,
-    items: ITEMS,
-    buktiInvoice
+    const res = await apiPost({
+      action:'submit',
+      penginput:'webapp',
+      jenis:'Pengeluaran', kategori:'Material',
+      tanggal: $('#mt-date').value,
+      noFaktur: $('#mt-faktur').value,
+      kreditor: $('#mt-kreditor').value,
+      status: $('#mt-status').value,
+      items: ITEMS,
+      buktiInvoice
+    });
+    if (res.status==='ok'){ showToast('Tersimpan'); ITEMS=[]; renderItems(); ev.target.reset(); refreshFaktur(); }
+    else showToast('Gagal menyimpan');
   });
-  if (res.status==='ok'){ showToast('Tersimpan'); ITEMS=[]; renderItems(); ev.target.reset(); refreshFaktur(); }
-  else showToast('Gagal menyimpan');
-});
+}
 
 /* ===== Input: Pemasukan ===== */
-$('#form-income').addEventListener('submit', async (ev)=>{
-  ev.preventDefault();
-  const files = $('#in-files').files || [];
-  const buktiLain = [];
-  for (const f of files){ buktiLain.push({name:f.name, type:f.type, base64: await toBase64(f)}); }
-  const res = await apiPost({
-    action:'submit',
-    penginput:'webapp',
-    jenis:'Pemasukan', kategori:'-',
-    tanggal: $('#in-date').value,
-    uraian: $('#in-uraian').value,
-    nominal: $('#in-nominal').value,
-    buktiLain
+if ($('#form-income')) {
+  $('#form-income').addEventListener('submit', async (ev)=>{
+    ev.preventDefault();
+    const files = $('#in-files').files || [];
+    const buktiLain = [];
+    for (const f of files){ buktiLain.push({name:f.name, type:f.type, base64: await toBase64(f)}); }
+    const res = await apiPost({
+      action:'submit',
+      penginput:'webapp',
+      jenis:'Pemasukan', kategori:'-',
+      tanggal: $('#in-date').value,
+      uraian: $('#in-uraian').value,
+      nominal: $('#in-nominal').value,
+      buktiLain
+    });
+    if (res.status==='ok'){ showToast('Tersimpan'); ev.target.reset(); }
+    else showToast('Gagal');
   });
-  if (res.status==='ok'){ showToast('Tersimpan'); ev.target.reset(); }
-  else showToast('Gagal');
-});
+}
 
 /* ===== Input: Pembayaran ===== */
-$('#form-pay').addEventListener('submit', async (ev)=>{
-  ev.preventDefault();
-  const files = $('#pay-files').files || [];
-  const buktiLain = [];
-  for (const f of files){ buktiLain.push({name:f.name, type:f.type, base64: await toBase64(f)}); }
-  const res = await apiPost({
-    action:'submit',
-    penginput:'webapp',
-    jenis:'Pengeluaran', kategori:'Pembayaran',
-    tanggal: $('#pay-date').value,
-    uraian: `${$('#pay-jenis').value} • ${$('#pay-ref').value}`,
-    nominal: $('#pay-nominal').value,
-    kreditor: $('#pay-pihak').value,
-    status: $('#pay-metode').value,
-    buktiLain
+if ($('#form-pay')) {
+  $('#form-pay').addEventListener('submit', async (ev)=>{
+    ev.preventDefault();
+    const files = $('#pay-files').files || [];
+    const buktiLain = [];
+    for (const f of files){ buktiLain.push({name:f.name, type:f.type, base64: await toBase64(f)}); }
+    const res = await apiPost({
+      action:'submit',
+      penginput:'webapp',
+      jenis:'Pengeluaran', kategori:'Pembayaran',
+      tanggal: $('#pay-date').value,
+      uraian: `${$('#pay-jenis').value} • ${$('#pay-ref').value}`,
+      nominal: $('#pay-nominal').value,
+      kreditor: $('#pay-pihak').value,
+      status: $('#pay-metode').value,
+      buktiLain
+    });
+    if (res.status==='ok'){ showToast('Tersimpan'); ev.target.reset(); }
+    else showToast('Gagal');
   });
-  if (res.status==='ok'){ showToast('Tersimpan'); ev.target.reset(); }
-  else showToast('Gagal');
-});
+}
 
 /* ===== Absensi ===== */
-$('#form-absen').addEventListener('submit', async (ev)=>{
-  ev.preventDefault();
-  const f = $('#ab-foto').files[0];
-  const foto = f ? {name:f.name, type:f.type, base64: await toBase64(f)} : null;
-  const res = await apiPost({
-    action:'submit_absen',
-    penginput:'webapp',
-    tanggal: $('#ab-date').value,
-    proyek: $('#ab-proyek').value,
-    pegawai: $('#ab-pegawai').value,
-    status: $('#ab-status').value,
-    lembur: $('#ab-lembur').value,
-    foto
+if ($('#form-absen')) {
+  $('#form-absen').addEventListener('submit', async (ev)=>{
+    ev.preventDefault();
+    const f = $('#ab-foto').files[0];
+    const foto = f ? {name:f.name, type:f.type, base64: await toBase64(f)} : null;
+    const res = await apiPost({
+      action:'submit_absen',
+      penginput:'webapp',
+      tanggal: $('#ab-date').value,
+      proyek: $('#ab-proyek').value,
+      pegawai: $('#ab-pegawai').value,
+      status: $('#ab-status').value,
+      lembur: $('#ab-lembur').value,
+      foto
+    });
+    if (res.status==='ok'){ showToast('Absensi tersimpan'); ev.target.reset(); }
+    else showToast('Gagal simpan');
   });
-  if (res.status==='ok'){ showToast('Absensi tersimpan'); ev.target.reset(); }
-  else showToast('Gagal simpan');
-});
+}
 
 /* ===== Monitoring Total (simple) ===== */
 let chartFlow;
-$('#mon-apply').onclick = async ()=>{
-  try{
-    const r = await apiGet({action:'monitor', kind:'total', range: $('#mon-range').value});
-    const ctx = $('#chartFlow');
-    const labels = ['Pemasukan','Pengeluaran','Material','Operasional','Gaji/Upah'];
-    const values = [
-      num(r.totalPemasukan), num(r.totalPengeluaran),
-      num(r.byKategori['Material']), num(r.byKategori['Operasional']), num(r.byKategori['Gaji']) || num(r.byKategori['Upah'])
-    ];
-    chartFlow && chartFlow.destroy();
-    chartFlow = new Chart(ctx, { type:'bar', data:{labels, datasets:[{label:'Total (Rp)', data:values}]}, options:{responsive:true, maintainAspectRatio:false} });
-  }catch(e){ console.error(e); showToast('Gagal memuat monitor'); }
-};
+if ($('#mon-apply')) {
+  $('#mon-apply').onclick = async ()=>{
+    try{
+      const r = await apiGet({action:'monitor', kind:'total', range: $('#mon-range').value});
+      const ctx = $('#chartFlow');
+      const labels = ['Pemasukan','Pengeluaran','Material','Operasional','Gaji/Upah'];
+      const values = [
+        num(r.totalPemasukan), num(r.totalPengeluaran),
+        num(r.byKategori['Material']), num(r.byKategori['Operasional']), num(r.byKategori['Gaji']) || num(r.byKategori['Upah'])
+      ];
+      chartFlow && chartFlow.destroy();
+      chartFlow = new Chart(ctx, { type:'bar', data:{labels, datasets:[{label:'Total (Rp)', data:values}]}, options:{responsive:true, maintainAspectRatio:false} });
+    }catch(e){ console.error(e); showToast('Gagal memuat monitor'); }
+  };
+}
 function num(rp){ return Number(String(rp||'').replace(/[^\d]/g,''))||0; }
 
 /* ===== Monitoring Tabel ===== */
 async function loadMonitor(kind) {
   try {
     const container = $(`#tbl-${kind}-container`);
+    if (!container) return;
     container.innerHTML = 'Memuat data...';
 
     const startDate = $(`#mon-${kind}-start`).value;
@@ -338,15 +362,19 @@ function renderTable(container, data, headers) {
 
 // Event Listeners untuk filter monitoring tabel
 ['material', 'operasional', 'upah'].forEach(kind => {
-  $(`#mon-${kind}-apply`).onclick = () => loadMonitor(kind);
-  $(`#btn-download-${kind}`).onclick = () => {
-    // Implementasi unduh ke Excel
-    const dataTable = $(`#tbl-${kind}-container .data-table`);
-    if (dataTable) {
-      const wb = XLSX.utils.table_to_book(dataTable);
-      XLSX.writeFile(wb, `${kind}_data.xlsx`);
-    } else {
-      showToast('Tidak ada data untuk diunduh');
-    }
-  };
+  if ($(`#mon-${kind}-apply`)) {
+    $(`#mon-${kind}-apply`).onclick = () => loadMonitor(kind);
+  }
+  if ($(`#btn-download-${kind}`)) {
+    $(`#btn-download-${kind}`).onclick = () => {
+      // Implementasi unduh ke Excel
+      const dataTable = $(`#tbl-${kind}-container .data-table`);
+      if (dataTable) {
+        const wb = XLSX.utils.table_to_book(dataTable);
+        XLSX.writeFile(wb, `${kind}_data.xlsx`);
+      } else {
+        showToast('Tidak ada data untuk diunduh');
+      }
+    };
+  }
 });
