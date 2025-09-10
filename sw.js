@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pkp-cache-v2';
+const CACHE_NAME = 'pkp-cache-v3';
 const URLS_TO_CACHE = [
   '/',
   'index.html',
@@ -17,9 +17,13 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('Opened cache and caching assets');
-        return cache.addAll(URLS_TO_CACHE).catch(err => {
-          console.error('Failed to cache one or more resources:', err);
-        });
+        return Promise.all(
+            URLS_TO_CACHE.map(url => {
+                return cache.add(url).catch(err => {
+                    console.warn(`Failed to cache ${url}:`, err);
+                });
+            })
+        );
       })
   );
   self.skipWaiting();
