@@ -1,0 +1,22 @@
+{
+  "name": "Portal Keuangan Proyek",
+  "short_name": "PKP",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "description": "Aplikasi untuk manajemen keuangan proyek dengan kemampuan offline.",
+  "icons": [
+    {
+      "src": "logo-main.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo-main.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+

@@ -4,277 +4,123 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Portal Keuangan Proyek</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ffffff">
 
   <!-- Fonts & Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
-  <!-- Chart -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <!-- SheetJS -->
-  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
-
   <link rel="stylesheet" href="style.css">
 </head>
 <body data-api="https://script.google.com/macros/s/AKfycbwLn3bi3DxH4T4rBouQdnXbSnfR6KF2dviiL2lEWAzHZb0h6ABOzne0K3k7RClckJJQ/exec">
 
-  <!-- ===== Toast ===== -->
-  <div id="toast" class="toast"><span id="toastText">—</span></div>
-
-  <!-- Sidebar -->
-  <aside id="sidebar" class="sidebar">
-    <div class="sidebar-head">
-      <div class="sidebar-brand">
-        <img src="logo-main.png" alt="Logo" class="brand-logo-sidebar"/>
-        <div class="brand-text-sidebar">
-          <strong>Portal Keuangan Proyek</strong>
-          <small>Transparan • Real-time</small>
+  <!-- ===== App Shell ===== -->
+  <div id="app-shell">
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-head">
+            <img class="brand-logo-sidebar" src="logo-main.png" alt="Logo">
+            <div class="brand-text-sidebar">
+                <strong>Portal Keuangan</strong>
+                <small>Proyek Anda</small>
+            </div>
         </div>
+        <nav class="nav-container">
+            <button class="nav-item active" data-nav="dashboard"><span class="material-symbols-outlined">dashboard</span><span class="nav-text">Dashboard</span></button>
+            <div class="nav-group">
+                <button class="nav-item" data-expand="input"><span class="material-symbols-outlined">edit_document</span><span class="nav-text">Input Data</span><span class="chev material-symbols-outlined">expand_more</span></button>
+                <div class="subnav">
+                    <button class="sub-item" data-nav="input-pemasukan">Pemasukan</button>
+                    <button class="sub-item" data-nav="input-operasional">Operasional</button>
+                    <button class="sub-item" data-nav="input-material">Material</button>
+                    <button class="sub-item" data-nav="pembayaran">Pembayaran</button>
+                    <button class="sub-item" data-nav="absensi">Absensi</button>
+                </div>
+            </div>
+            <div class="nav-group">
+                <button class="nav-item" data-expand="monitor"><span class="material-symbols-outlined">monitoring</span><span class="nav-text">Monitoring</span><span class="chev material-symbols-outlined">expand_more</span></button>
+                <div class="subnav">
+                    <button class="sub-item" data-nav="monitor-arus-kas">Arus Kas Total</button>
+                    <button class="sub-item" data-nav="monitor-material">Kas Material</button>
+                    <button class="sub-item" data-nav="monitor-operasional">Kas Operasional</button>
+                    <button class="sub-item" data-nav="monitor-upah">Kas Upah/Gaji</button>
+                </div>
+            </div>
+        </nav>
+        <div class="sidebar-footer"><button id="btnLogout" class="nav-item danger"><span class="material-symbols-outlined">logout</span><span class="nav-text">Keluar</span></button></div>
+    </aside>
+
+    <div class="content-wrapper">
+      <header class="main-header">
+        <button id="btnOpenNav" class="icon-btn" aria-label="Menu"><span class="material-symbols-outlined">menu</span></button>
+        <div class="search-container"><span class="material-symbols-outlined">search</span><input id="qGlobal" type="search" placeholder="Cari transaksi…"></div>
+        <div id="connection-status" class="connection-status">
+            <div class="indicator"></div>
+            <span class="status-text"></span>
+        </div>
+      </header>
+      <div class="page-container">
+        <!-- DASHBOARD -->
+        <main id="page-dashboard" class="page active">
+          <section class="kpi-grid">
+            <article class="kpi"><p>Pendapatan</p><h3 id="kpiIncome">Memuat...</h3></article>
+            <article class="kpi"><p>Material</p><h3 id="kpiMaterial">Memuat...</h3></article>
+            <article class="kpi"><p>Gaji/Upah</p><h3 id="kpiGaji">Memuat...</h3></article>
+            <article class="kpi"><p>Kas</p><h3 id="kpiKas">Memuat...</h3></article>
+          </section>
+          <section class="card">
+            <div class="card-header"><h4>Pengeluaran 7 Hari Terakhir</h4><button id="btnRefresh" class="icon-btn" aria-label="Refresh Data"><span class="material-symbols-outlined">refresh</span></button></div>
+            <div class="chart-container"><canvas id="chart7"></canvas></div>
+          </section>
+        </main>
+        
+        <!-- All other pages will be injected here by JS -->
+
       </div>
-      <button id="btnToggleNav" class="icon-btn" aria-label="Toggle Menu">
-        <span class="material-symbols-outlined">close</span>
-      </button>
     </div>
-
-    <nav class="nav">
-      <button class="nav-item active" data-nav="dashboard">
-        <span class="material-symbols-outlined">dashboard</span> Dashboard
-      </button>
-
-      <div class="nav-group">
-        <button class="nav-item" data-expand="input">
-          <span class="material-symbols-outlined">add_circle</span> Input Data
-          <span class="chev material-symbols-outlined">expand_more</span>
-        </button>
-        <div id="sub-input" class="subnav">
-          <button class="sub-item" data-nav="input-operasional">Belanja Operasional</button>
-          <button class="sub-item" data-nav="input-material">Belanja Material</button>
-          <button class="sub-item" data-nav="pemasukan">Pemasukan</button>
-          <button class="sub-item" data-nav="pembayaran">Pembayaran</button>
-          <button class="sub-item" data-nav="absensi">Absensi</button>
-        </div>
-      </div>
-
-      <div class="nav-group">
-        <button class="nav-item" data-expand="monitor">
-          <span class="material-symbols-outlined">monitoring</span> Monitoring
-          <span class="chev material-symbols-outlined">expand_more</span>
-        </button>
-        <div id="sub-monitor" class="subnav">
-          <button class="sub-item" data-nav="monitor-total">Total Arus Kas</button>
-          <button class="sub-item" data-nav="monitor-material">Kas Material</button>
-          <button class="sub-item" data-nav="monitor-operasional">Kas Operasional</button>
-          <button class="sub-item" data-nav="monitor-upah">Kas Upah/Gaji</button>
-        </div>
-      </div>
-
-      <button id="btnLogout" class="nav-item danger">
-        <span class="material-symbols-outlined">logout</span> Keluar
-      </button>
-    </nav>
-    <div class="sidebar-footer">
-      <small>Made by ZOoNiNe</small>
-    </div>
-  </aside>
+  </div>
+  
   <div id="scrim" class="scrim"></div>
-
-  <!-- ===== Main Pages ===== -->
-  <div class="content-wrapper">
-    <!-- Tombol untuk membuka sidebar di tampilan mobile -->
-    <div class="mobile-header">
-      <button id="btnOpenNav" class="icon-btn" aria-label="Buka Menu">
-          <span class="material-symbols-outlined">menu</span>
-      </button>
+  
+  <!-- Pop-ups -->
+  <div id="popup-container" class="popup-container"><div class="popup-content"><span id="popup-icon"></span><p id="popup-message"></p></div></div>
+  <div id="kreditor-popup" class="modal-bg hidden">
+    <div class="modal-content">
+      <div class="modal-header"><h4>Tambah Kreditor</h4><button class="modal-close-btn">&times;</button></div>
+      <div class="modal-body">
+        <form id="form-add-kreditor" class="form">
+          <div class="form-group"><label for="kreditor-name">Nama Kreditor/Vendor</label><input id="kreditor-name" name="nama" type="text" required></div>
+          <button type="submit" class="btn btn-primary w-full">Simpan</button>
+        </form>
+      </div>
     </div>
-    
-    <main id="page-dashboard" class="page active">
-      <section class="row gap">
-        <div class="search">
-          <span class="material-symbols-outlined">search</span>
-          <input id="qGlobal" type="search" placeholder="Cari transaksi, vendor, atau tag…">
-        </div>
-      </section>
-
-      <section class="kpi-grid">
-        <article class="kpi"><p>Pendapatan</p><h3 id="kpiIncome">Rp 0</h3></article>
-        <article class="kpi"><p>Material</p><h3 id="kpiMaterial">Rp 0</h3></article>
-        <article class="kpi"><p>Gaji</p><h3 id="kpiGaji">Rp 0</h3></article>
-        <article class="kpi"><p>Kas</p><h3 id="kpiKas">Rp 0</h3></article>
-      </section>
-
-      <section class="card">
-        <div class="card-header">
-          <h4>Pengeluaran 7 Hari</h4>
-          <button id="btnRefresh" class="icon-btn"><span class="material-symbols-outlined">refresh</span></button>
-        </div>
-        <canvas id="chart7" height="160"></canvas>
-      </section>
-    </main>
-
-    <!-- INPUT OPERASIONAL -->
-    <main id="page-input-operasional" class="page">
-      <h3>Belanja Operasional</h3>
-      <form id="form-operasional" class="form">
-        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="op-date" type="date"></label>
-        <label class="label"><span class="material-symbols-outlined">description</span> Uraian <input id="op-uraian" type="text" placeholder="Keterangan singkat…"></label>
-        <label class="label"><span class="material-symbols-outlined">payments</span> Nominal (Rp) <input id="op-nominal" type="number" min="0"></label>
-        <label class="label"><span class="material-symbols-outlined">person</span> Kreditor / Vendor <input id="op-kreditor" type="text"></label>
-        <label class="label"><span class="material-symbols-outlined">info</span> Status
-          <select id="op-status">
-            <option>Sudah Dibayar</option><option>Belum Dibayar</option><option>Tempo</option>
-          </select>
-        </label>
-        <label class="label"><span class="material-symbols-outlined">attach_file</span> Lampiran (opsional)
-          <input id="op-files" type="file" accept="image/*,.pdf" multiple>
-        </label>
-        <button class="btn btn-primary w-full">Kirim</button>
-      </form>
-    </main>
-
-    <!-- INPUT MATERIAL -->
-    <main id="page-input-material" class="page">
-      <h3>Belanja Material</h3>
-      <form id="form-material" class="form">
-        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="mt-date" type="date"></label>
-        <label class="label"><span class="material-symbols-outlined">note</span> No Faktur (global)
-          <input id="mt-faktur" type="text" placeholder="Otomatis" readonly>
-        </label>
-
-        <div class="grid-2">
-          <label class="label"><span class="material-symbols-outlined">inventory_2</span> Nama Barang <input id="mt-nama" type="text"></label>
-          <label class="label"><span class="material-symbols-outlined">pin</span> Qty <input id="mt-qty" type="number" min="0"></label>
-        </div>
-        <div class="grid-2">
-          <label class="label"><span class="material-symbols-outlined">payments</span> Harga Satuan (Rp) <input id="mt-harga" type="number" min="0"></label>
-          <label class="label"><span class="material-symbols-outlined">paid</span> Total (otomatis) <input id="mt-total" type="text" readonly></label>
-        </div>
-
-        <label class="label"><span class="material-symbols-outlined">person</span> Kreditor / Supplier <input id="mt-kreditor" type="text"></label>
-        <label class="label"><span class="material-symbols-outlined">info</span> Status
-          <select id="mt-status">
-            <option>Sudah Dibayar</option><option>Belum Dibayar</option><option>Tempo</option>
-          </select>
-        </label>
-
-        <div class="row">
-          <button id="mt-additem" type="button" class="btn">Tambah Item</button>
-          <button id="mt-clear"   type="button" class="btn btn-ghost">Bersihkan</button>
-        </div>
-        <div id="mt-items" class="items empty">Belum ada item.</div>
-
-        <label class="label"><span class="material-symbols-outlined">attach_file</span> Lampiran (Invoice & SJ digabung)
-          <input id="mt-files" type="file" accept="image/*,.pdf" multiple>
-        </label>
-
-        <button class="btn btn-primary w-full">Kirim</button>
-      </form>
-    </main>
-
-    <!-- PEMASUKAN -->
-    <main id="page-pemasukan" class="page">
-      <h3>Pemasukan</h3>
-      <form id="form-income" class="form">
-        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="in-date" type="date"></label>
-        <label class="label"><span class="material-symbols-outlined">account_balance_wallet</span> Sumber / Uraian <input id="in-uraian" type="text"></label>
-        <label class="label"><span class="material-symbols-outlined">payments</span> Nominal (Rp) <input id="in-nominal" type="number" min="0"></label>
-        <label class="label"><span class="material-symbols-outlined">attach_file</span> Lampiran (opsional) <input id="in-files" type="file" accept="image/*,.pdf" multiple></label>
-        <button class="btn btn-primary w-full">Kirim</button>
-      </form>
-    </main>
-
-    <!-- PEMBAYARAN -->
-    <main id="page-pembayaran" class="page">
-      <h3>Pembayaran</h3>
-      <form id="form-pay" class="form">
-        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="pay-date" type="date"></label>
-        <label class="label"><span class="material-symbols-outlined">sell</span> Jenis Bayar
-          <select id="pay-jenis">
-            <option>Bayar Tagihan Material</option><option>Bayar Pinjaman</option><option>Bayar Upah Kerja</option>
-          </select>
-        </label>
-        <label class="label"><span class="material-symbols-outlined">pin</span> Referensi (No Faktur/ID) <input id="pay-ref" type="text"></label>
-        <label class="label"><span class="material-symbols-outlined">person</span> Pihak / Kreditor <input id="pay-pihak" type="text"></label>
-        <label class="label"><span class="material-symbols-outlined">payments</span> Nominal (Rp) <input id="pay-nominal" type="number" min="0"></label>
-        <label class="label"><span class="material-symbols-outlined">credit_card</span> Metode
-          <select id="pay-metode"><option>Tunai</option><option>Transfer</option><option>QRIS</option></select>
-        </label>
-        <label class="label"><span class="material-symbols-outlined">attach_file</span> Bukti Pembayaran <input id="pay-files" type="file" accept="image/*,.pdf" multiple></label>
-        <button class="btn btn-primary w-full">Kirim</button>
-      </form>
-    </main>
-
-    <!-- ABSENSI -->
-    <main id="page-absensi" class="page">
-      <h3>Absensi</h3>
-      <form id="form-absen" class="form">
-        <label class="label"><span class="material-symbols-outlined">calendar_today</span> Tanggal <input id="ab-date" type="date"></label>
-        <label class="label"><span class="material-symbols-outlined">business</span> Proyek <input id="ab-proyek" type="text" placeholder="Nama/Kode proyek"></label>
-        <label class="label"><span class="material-symbols-outlined">person</span> Pegawai <input id="ab-pegawai" type="text" placeholder="Nama pegawai"></label>
-        <label class="label"><span class="material-symbols-outlined">info</span> Status
-          <select id="ab-status">
-            <option>Masuk</option><option>Setengah Hari</option><option>Izin</option><option>Sakit</option><option>Alpha</option><option>Cuti</option>
-          </select>
-        </label>
-        <label class="label"><span class="material-symbols-outlined">schedule</span> Lembur (jam) <input id="ab-lembur" type="number" min="0" max="12"></label>
-        <label class="label"><span class="material-symbols-outlined">camera_alt</span> Foto (opsional) <input id="ab-foto" type="file" accept="image/*"></label>
-        <button class="btn btn-primary w-full">Simpan</button>
-      </form>
-    </main>
-
-    <!-- MONITOR TOTAL -->
-    <main id="page-monitor-total" class="page">
-      <h3>Total Arus Kas</h3>
-      <div class="row">
-        <select id="mon-range">
-          <option value="7">7 hari</option><option value="30" selected>30 hari</option><option value="90">90 hari</option>
-        </select>
-        <button id="mon-apply" class="btn">Terapkan</button>
-        <button id="btn-download-total" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
+  </div>
+  <div id="worker-popup" class="modal-bg hidden">
+      <div class="modal-content">
+          <div class="modal-header"><h4>Manajemen Pekerja</h4><button class="modal-close-btn">&times;</button></div>
+          <div class="modal-body">
+              <form id="form-add-worker" class="form">
+                  <h5>Tambah Pekerja Baru</h5>
+                  <div class="form-group"><label for="worker-name">Nama Pegawai</label><input id="worker-name" name="nama" type="text" required></div>
+                  <div class="form-group"><label for="worker-profesi">Profesi</label><input id="worker-profesi" name="profesi" type="text" required></div>
+                  <div class="form-group"><label for="worker-upah">Upah Harian (Rp)</label><input id="worker-upah" name="upah" type="number" min="0" required></div>
+                  <button type="submit" class="btn btn-primary w-full">Tambah</button>
+              </form>
+              <div class="card" style="margin-top: 1.5rem;">
+                  <h5 class="card-header">Daftar Pekerja</h5>
+                  <div id="worker-list" class="table-container"></div>
+              </div>
+          </div>
       </div>
-      <div class="card"><canvas id="chartFlow" height="180"></canvas></div>
-    </main>
-
-    <!-- Placeholder monitor lainnya -->
-    <main id="page-monitor-material" class="page">
-      <h3>Kas Material</h3>
-      <div class="row">
-        <input type="date" id="mon-mat-start">
-        <input type="date" id="mon-mat-end">
-        <button id="mon-mat-apply" class="btn">Terapkan</button>
-        <button id="btn-download-material" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
-      </div>
-      <div class="card" id="tbl-material-container">
-        <p>Memuat data...</p>
-      </div>
-    </main>
-
-    <main id="page-monitor-operasional" class="page">
-      <h3>Kas Operasional</h3>
-      <div class="row">
-        <input type="date" id="mon-op-start">
-        <input type="date" id="mon-op-end">
-        <button id="mon-op-apply" class="btn">Terapkan</button>
-        <button id="btn-download-operasional" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
-      </div>
-      <div class="card" id="tbl-operasional-container">
-        <p>Memuat data...</p>
-      </div>
-    </main>
-    <main id="page-monitor-upah" class="page">
-      <h3>Kas Upah/Gaji</h3>
-      <div class="row">
-        <input type="date" id="mon-upah-start">
-        <input type="date" id="mon-upah-end">
-        <button id="mon-upah-apply" class="btn">Terapkan</button>
-        <button id="btn-download-upah" class="btn btn-ghost"><span class="material-symbols-outlined">download</span></button>
-      </div>
-      <div class="card" id="tbl-upah-container">
-        <p>Memuat data...</p>
-      </div>
-    </main>
   </div>
 
-  <script src="script.js" defer></script>
+  <!-- PENTING: Library untuk Database Offline -->
+  <script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
+  
+  <script src="script.js"></script>
 </body>
 </html>
+
