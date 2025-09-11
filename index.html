@@ -14,9 +14,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
   
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-api="https://script.google.com/macros/s/AKfycbwLn3bi3DxH4T4rBouQdnXbSnfR6KF2dviiL2lEWAzHZb0h6ABOzne0K3k7RClckJJQ/exec">
+<body data-api="https://script.google.com/macros/s/AKfycbxNa1eQyPZVPZAq8-yWP3FtmUIHrPnR8jeZugLn9wc5kNCrWYl293oQVpxTst51ylLaZg/exec">
 
   <!-- ===== App Shell ===== -->
   <div id="app-shell">
@@ -30,81 +31,145 @@
         </div>
         <nav class="nav-container">
             <button class="nav-item active" data-nav="dashboard"><span class="material-symbols-outlined">dashboard</span><span class="nav-text">Dashboard</span></button>
-            <div class="nav-group">
-                <button class="nav-item" data-expand="input"><span class="material-symbols-outlined">edit_document</span><span class="nav-text">Input Data</span><span class="chev material-symbols-outlined">expand_more</span></button>
-                <div class="subnav">
-                    <button class="sub-item" data-nav="input-pemasukan">Pemasukan</button>
-                    <button class="sub-item" data-nav="input-operasional">Operasional</button>
-                    <button class="sub-item" data-nav="input-material">Material</button>
-                    <button class="sub-item" data-nav="pembayaran">Pembayaran</button>
-                    <button class="sub-item" data-nav="absensi">Absensi</button>
-                </div>
-            </div>
-            <div class="nav-group">
-                <button class="nav-item" data-expand="monitor"><span class="material-symbols-outlined">monitoring</span><span class="nav-text">Monitoring</span><span class="chev material-symbols-outlined">expand_more</span></button>
-                <div class="subnav">
-                    <button class="sub-item" data-nav="monitor-arus-kas">Arus Kas Total</button>
-                    <button class="sub-item" data-nav="monitor-material">Kas Material</button>
-                    <button class="sub-item" data-nav="monitor-operasional">Kas Operasional</button>
-                    <button class="sub-item" data-nav="monitor-upah">Kas Upah/Gaji</button>
-                </div>
-            </div>
+            <button class="nav-item" data-nav="input-data"><span class="material-symbols-outlined">edit_document</span><span class="nav-text">Input Data</span></button>
+            <button class="nav-item" data-nav="absensi"><span class="material-symbols-outlined">group</span><span class="nav-text">Absensi</span></button>
+            <button class="nav-item" data-nav="stok-material"><span class="material-symbols-outlined">inventory_2</span><span class="nav-text">Stok Material</span></button>
+            <button class="nav-item" data-nav="tagihan"><span class="material-symbols-outlined">receipt</span><span class="nav-text">Tagihan</span></button>
+            <button class="nav-item" data-nav="monitoring"><span class="material-symbols-outlined">monitoring</span><span class="nav-text">Laporan</span></button>
+            <button class="nav-item" data-nav="pengaturan"><span class="material-symbols-outlined">settings</span><span class="nav-text">Pengaturan</span></button>
         </nav>
-        <div class="sidebar-footer"><button id="btnLogout" class="nav-item danger"><span class="material-symbols-outlined">logout</span><span class="nav-text">Keluar</span></button></div>
+        <div class="sidebar-footer">
+            <button id="auth-btn" class="nav-item">
+                <span class="material-symbols-outlined">login</span>
+                <span class="nav-text">Login</span>
+            </button>
+        </div>
     </aside>
 
     <div class="content-wrapper">
       <header class="main-header">
         <button id="btnOpenNav" class="icon-btn" aria-label="Menu"><span class="material-symbols-outlined">menu</span></button>
-        <div class="search-container"><span class="material-symbols-outlined">search</span><input id="qGlobal" type="search" placeholder="Cari transaksi…"></div>
-        <div id="connection-status" class="connection-status">
-            <div class="indicator"></div>
-            <span class="status-text"></span>
+        <div class="header-actions">
+            <div id="connection-status" class="connection-status">
+                <div class="indicator"></div>
+                <span class="status-text"></span>
+            </div>
+            <button id="notification-btn" class="icon-btn notification-btn" aria-label="Notifikasi">
+                <span class="material-symbols-outlined">notifications</span>
+                <span class="notification-badge hidden"></span>
+            </button>
+            <button id="theme-toggle-btn" class="icon-btn" aria-label="Ganti Tema">
+                <span class="material-symbols-outlined light-icon">light_mode</span>
+                <span class="material-symbols-outlined dark-icon">dark_mode</span>
+            </button>
+            <div class="user-profile">
+                <img id="user-avatar" src="https://placehold.co/40x40/e2e8f0/64748b?text=G" alt="Avatar Pengguna">
+                <span id="user-label">Guest</span>
+            </div>
         </div>
       </header>
       <div class="page-container">
         <!-- DASHBOARD -->
         <main id="page-dashboard" class="page active">
-          <section class="kpi-grid">
-            <article class="kpi"><p>Pendapatan</p><h3 id="kpiIncome">Memuat...</h3></article>
-            <article class="kpi"><p>Material</p><h3 id="kpiMaterial">Memuat...</h3></article>
-            <article class="kpi"><p>Gaji/Upah</p><h3 id="kpiGaji">Memuat...</h3></article>
-            <article class="kpi"><p>Kas</p><h3 id="kpiKas">Memuat...</h3></article>
+          <section class="quick-actions-grid">
+              <button class="quick-action-btn" data-quick-link="input-data" data-form-target="pemasukan"><span class="material-symbols-outlined">add_card</span><span>Pemasukan</span></button>
+              <button class="quick-action-btn" data-quick-link="input-data" data-form-target="material"><span class="material-symbols-outlined">construction</span><span>Material</span></button>
+              <button class="quick-action-btn" data-quick-link="input-data" data-form-target="operasional"><span class="material-symbols-outlined">receipt_long</span><span>Operasional</span></button>
+              <button class="quick-action-btn" data-quick-link="absensi"><span class="material-symbols-outlined">person_add</span><span>Absensi</span></button>
           </section>
-          <section class="card">
+          <section class="kpi-grid-5">
+            <article class="kpi" data-nav-link="monitoring" data-monitor-target="arus-kas"><p>Pendapatan</p><h3 id="kpiIncome"><div class="skeleton"></div></h3></article>
+            <article class="kpi" data-nav-link="monitoring" data-monitor-target="material"><p>Material</p><h3 id="kpiMaterial"><div class="skeleton"></div></h3></article>
+            <article class="kpi" data-nav-link="monitoring" data-monitor-target="upah"><p>Gaji/Upah</p><h3 id="kpiGaji"><div class="skeleton"></div></h3></article>
+            <article class="kpi" data-nav-link="tagihan"><p>Tagihan</p><h3 id="kpiTagihan"><div class="skeleton"></div></h3></article>
+            <article class="kpi kpi-kas" data-nav-link="monitoring" data-monitor-target="arus-kas"><p>Sisa Kas</p><h3 id="kpiKas"><div class="skeleton"></div></h3></article>
+          </section>
+          <section class="card clickable" data-nav-link="monitoring" data-monitor-target="arus-kas">
             <div class="card-header"><h4>Arus Kas 7 Hari Terakhir</h4><button id="btnRefresh" class="icon-btn" aria-label="Refresh Data"><span class="material-symbols-outlined">refresh</span></button></div>
             <div class="chart-container"><canvas id="chart7"></canvas></div>
           </section>
+          <div class="dashboard-grid">
+              <section class="card" id="upcoming-bills-card">
+                  <div class="card-header">
+                      <h4>Tagihan Mendatang</h4>
+                      <button class="btn-link" data-nav-link="tagihan">Semua <span class="material-symbols-outlined">arrow_forward</span></button>
+                  </div>
+                  <div id="upcoming-bills-container" class="card-body">
+                      <!-- Konten tagihan dimuat oleh script.js -->
+                  </div>
+              </section>
+              <section class="card" id="recent-activity-card">
+                  <div class="card-header">
+                      <h4>Aktivitas Terbaru</h4>
+                      <button class="btn-link" data-nav-link="monitoring" data-monitor-target="arus-kas">Semua <span class="material-symbols-outlined">arrow_forward</span></button>
+                  </div>
+                  <div id="recent-activity-container" class="card-body">
+                      <!-- Konten aktivitas dimuat oleh script.js -->
+                  </div>
+              </section>
+          </div>
         </main>
         
-        <!-- All other pages will be injected here by JS -->
-
+        <!-- Halaman lain akan disisipkan di sini oleh script.js -->
       </div>
     </div>
   </div>
   
+  <button id="fab-add-btn" class="fab" aria-label="Tambah Data Baru">
+      <span class="material-symbols-outlined">add</span>
+  </button>
+
   <div id="scrim" class="scrim"></div>
   
   <!-- Pop-ups -->
   <div id="popup-container" class="popup-container"><div class="popup-content"><span id="popup-icon"></span><p id="popup-message"></p></div></div>
-  <div id="data-management-popup" class="modal-bg hidden">
+  
+  <div id="login-modal" class="modal-bg hidden">
     <div class="modal-content">
-      <div class="modal-header"><h4>Pusat Data</h4><button class="modal-close-btn">&times;</button></div>
+        <div class="modal-header"><h4>Login atau Sign In</h4></div>
+        <div class="modal-body">
+            <p>Hubungkan dengan akun Google Anda untuk mengakses semua fitur aplikasi.</p>
+            <button id="google-login-btn" class="btn btn-primary w-full google-btn">
+                <svg class="google-icon" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                <span>Masuk dengan Google</span>
+            </button>
+        </div>
+    </div>
+  </div>
+  
+  <div id="pending-auth-modal" class="modal-bg hidden">
+    <div class="modal-content">
+        <div class="modal-header"><h4>Menunggu Otorisasi</h4></div>
+        <div class="modal-body">
+            <p>Akun Anda berhasil terhubung. Anda akan mendapatkan akses penuh setelah permintaan Anda disetujui oleh author.</p>
+            <p>Notifikasi persetujuan akan dikirim ke email: <strong id="pending-email"></strong></p>
+        </div>
+    </div>
+  </div>
+
+  <!-- Modal lainnya (data-management, quick-attendance, dll) tetap sama -->
+   <div id="data-management-popup" class="modal-bg hidden">
+    <div class="modal-content">
+      <div class="modal-header"><h4>Pusat Data</h4><button class="modal-close-btn icon-btn"><span class="material-symbols-outlined">close</span></button></div>
       <div class="modal-body">
         <div class="tab-buttons">
           <button class="tab-btn active" data-tab="pekerja">Pekerja</button>
           <button class="tab-btn" data-tab="kreditor">Kreditor</button>
-          <button class="tab-btn" data-tab="proyek">Proyek</button>
         </div>
         <div class="tab-content active" id="tab-pekerja">
           <form id="form-add-worker" class="form">
               <h5>Tambah Pekerja Baru</h5>
               <div class="form-group"><label>Nama Pegawai</label><input name="nama" type="text" required></div>
-              <div class="form-group"><label>Profesi</label><input name="profesi" type="text" required></div>
-              <div class="form-group"><label>Upah Harian (Rp)</label><input name="upah" type="number" inputmode="numeric" min="0" required></div>
+              <div class="form-group"><label>Profesi</label><input name="profesi" type="text" list="profesi-datalist" class="form-input" required><datalist id="profesi-datalist"></datalist></div>
+              <div class="form-group"><label>Upah Harian (Rp)</label><input name="upah" type="text" class="currency-input" inputmode="numeric" min="0" required></div>
+              <div class="form-group">
+                <label for="worker-proyek">Nama Proyek (Ketik nama baru jika belum ada)</label>
+                <input id="worker-proyek" name="proyek" list="proyek-datalist" class="form-input" required>
+                <datalist id="proyek-datalist"></datalist>
+              </div>
               <button type="submit" class="btn btn-primary w-full">Tambah Pekerja</button>
           </form>
-          <div class="card"><h5 class="card-header">Daftar Pekerja</h5><div id="worker-list" class="table-container"></div></div>
+          <div class="table-wrapper"><h5 class="table-title">Daftar Pekerja</h5><div id="worker-list" class="table-container"></div></div>
         </div>
         <div class="tab-content" id="tab-kreditor">
           <form id="form-add-kreditor" class="form">
@@ -112,32 +177,85 @@
               <div class="form-group"><label>Nama Kreditor/Vendor</label><input name="nama" type="text" required></div>
               <button type="submit" class="btn btn-primary w-full">Tambah Kreditor</button>
           </form>
-          <div class="card"><h5 class="card-header">Daftar Kreditor</h5><div id="kreditor-list" class="table-container"></div></div>
-        </div>
-        <div class="tab-content" id="tab-proyek">
-          <form id="form-add-proyek" class="form">
-              <h5>Tambah Proyek Baru</h5>
-              <div class="form-group"><label>Nama Proyek</label><input name="nama" type="text" required></div>
-              <button type="submit" class="btn btn-primary w-full">Tambah Proyek</button>
-          </form>
-          <div class="card"><h5 class="card-header">Daftar Proyek</h5><div id="proyek-list" class="table-container"></div></div>
+          <div class="table-wrapper"><h5 class="table-title">Daftar Kreditor</h5><div id="kreditor-list" class="table-container"></div></div>
         </div>
       </div>
     </div>
   </div>
-  <div id="custom-select-popup" class="modal-bg hidden">
+
+  <div id="quick-attendance-modal" class="modal-bg hidden">
       <div class="modal-content">
-          <div class="modal-header"><h4 id="custom-select-title">Pilih Opsi</h4><button class="modal-close-btn">&times;</button></div>
+          <div class="modal-header">
+              <h4 id="quick-attendance-title">Absensi Cepat</h4>
+              <button class="modal-close-btn icon-btn"><span class="material-symbols-outlined">close</span></button>
+          </div>
           <div class="modal-body">
-              <input type="search" id="custom-select-search" class="form-input" placeholder="Cari opsi...">
-              <div id="custom-select-options" class="custom-select-options"></div>
+              <p id="quick-attendance-name" class="quick-attendance-name"></p>
+              <div class="quick-attendance-actions">
+                  <button class="btn btn-status full-day" data-status="Hadir (Sehari Penuh)"><span class="material-symbols-outlined">check_circle</span> Sehari Penuh</button>
+                  <button class="btn btn-status half-day" data-status="Hadir (Setengah Hari)"><span class="material-symbols-outlined">hourglass_top</span> Setengah Hari</button>
+                  <button class="btn btn-status absent" data-status="Tidak Masuk"><span class="material-symbols-outlined">cancel</span> Tidak Masuk</button>
+              </div>
           </div>
       </div>
   </div>
-
-  <!-- PENTING: Library untuk Database Offline -->
-  <script src="https://cdn.jsdelivr.net/npm/idb@7/build/umd.js"></script>
   
+  <div id="use-stock-modal" class="modal-bg hidden">
+    <form id="form-use-stock" class="modal-content">
+        <div class="modal-header">
+            <h4>Gunakan Stok Material</h4>
+            <button type="button" class="modal-close-btn icon-btn"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="modal-body">
+            <p>Anda akan menggunakan:</p>
+            <strong id="use-stock-name" class="payment-description"></strong>
+            <div class="form-group">
+                <label for="use-stock-qty">Jumlah Digunakan</label>
+                <input type="number" id="use-stock-qty" name="qty" class="form-input" required>
+            </div>
+            <div class="form-group" id="custom-select-use-stock-proyek">
+                <label>Untuk Proyek</label>
+                <input type="hidden" name="proyek" required>
+                <button type="button" class="custom-select-trigger"><span class="text">Pilih Proyek</span></button>
+            </div>
+        </div>
+        <div class="form-footer">
+            <button type="submit" class="btn btn-primary">Konfirmasi Penggunaan</button>
+        </div>
+    </form>
+  </div>
+
+
+  <div id="quick-input-modal" class="modal-bg hidden">
+    <div class="modal-content">
+      <div class="modal-header"><h4>Pilih Jenis Input</h4><button class="modal-close-btn icon-btn"><span class="material-symbols-outlined">close</span></button></div>
+      <div class="modal-body">
+        <div class="quick-actions-grid">
+            <button class="quick-action-btn" data-quick-input="pemasukan"><span class="material-symbols-outlined">add_card</span><span>Pemasukan</span></button>
+            <button class="quick-action-btn" data-quick-input="material"><span class="material-symbols-outlined">construction</span><span>Material</span></button>
+            <button class="quick-action-btn" data-quick-input="operasional"><span class="material-symbols-outlined">receipt_long</span><span>Operasional</span></button>
+            <button class="quick-action-btn" data-quick-input="absensi"><span class="material-symbols-outlined">person_add</span><span>Absensi</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+    <div id="edit-modal" class="modal-bg hidden">
+      <form id="form-edit" class="modal-content">
+          <div class="modal-header">
+              <h4 id="edit-modal-title">Edit Data</h4>
+              <button type="button" class="modal-close-btn icon-btn"><span class="material-symbols-outlined">close</span></button>
+          </div>
+          <div id="edit-modal-body" class="modal-body">
+              <!-- Form fields will be injected here by script.js -->
+          </div>
+          <div class="form-footer">
+              <button type="submit" class="btn btn-primary">Simpan Perubahan</button>
+          </div>
+      </form>
+  </div>
+
+
   <script src="script.js"></script>
 </body>
 </html>

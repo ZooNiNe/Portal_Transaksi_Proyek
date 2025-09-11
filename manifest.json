@@ -1,21 +1,78 @@
 {
-  "name": "Portal Keuangan Proyek",
+  "name": "BanPlex",
   "short_name": "BanPlex",
-  "start_url": "index.html",
+  "description": "Portal Keuangan Proyek untuk manajemen transaksi, absensi, dan laporan secara efisien.",
+  "start_url": ".",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#3b82f6",
-  "description": "Aplikasi untuk manajemen keuangan proyek dengan kemampuan offline.",
+  "background_color": "#f0f9ff",
+  "theme_color": "#ffffff",
+  "scope": "/",
+  "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "logo-main.png",
-      "sizes": "192x192",
+      "src": "images/icons/icon-72x72.png",
+      "sizes": "72x72",
       "type": "image/png"
     },
     {
-      "src": "logo-main.png",
-      "sizes": "512x512",
+      "src": "images/icons/icon-96x96.png",
+      "sizes": "96x96",
       "type": "image/png"
+    },
+    {
+      "src": "images/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png"
+    },
+    {
+      "src": "images/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png"
+    },
+    {
+      "src": "images/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png"
+    },
+    {
+      "src": "images/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "images/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png"
+    },
+    {
+      "src": "images/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Input Transaksi Baru",
+      "short_name": "Input Baru",
+      "description": "Membuka halaman untuk input data transaksi baru.",
+      "url": "/#input-data",
+      "icons": [{ "src": "images/icons/shortcut-input.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Lihat Laporan",
+      "short_name": "Laporan",
+      "description": "Membuka halaman monitoring dan laporan.",
+      "url": "/#monitoring",
+      "icons": [{ "src": "images/icons/shortcut-report.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Lihat Tagihan",
+      "short_name": "Tagihan",
+      "description": "Melihat daftar tagihan yang belum dibayar.",
+      "url": "/#tagihan",
+      "icons": [{ "src": "images/icons/shortcut-bills.png", "sizes": "96x96" }]
     }
   ]
 }
