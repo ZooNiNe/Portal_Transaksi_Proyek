@@ -1,439 +1,390 @@
 // @ts-check
 /* =======================================================
- * PKP Frontend v5.2 - Final Build (Firebase Architecture)
+ * PKP Frontend v5.2 - Final Build (Auth Redirect Fixed)
+ * Firebase v8 (namespaced)
  * ======================================================= */
 
-/**
- * @global {any} firebase
- * @global {any} Chart
- */
-
-// Define custom properties on the Window interface for TypeScript
-window.Chart = window.Chart || {};
+/* global firebase, Chart */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // =================================================================
-    // PENTING: PASTE KONFIGURASI FIREBASE ANDA DI SINI
-    // =================================================================
-    const firebaseConfig = {
-      apiKey: "AIzaSyBDTURKKzmhG8hZXlBryoQRdjqd70GI18c",
-      authDomain: "banflex-3e7c4.firebaseapp.com",
-      projectId: "banflex-3e7c4",
-      storageBucket: "banflex-3e7c4.appspot.com",
-      messagingSenderId: "192219628345",
-      appId: "1:192219628345:web:f1caa28230a5803e681ee8"
-    };
-    // =================================================================
+  // =====================================================
+  // 1) KONFIGURASI FIREBASE
+  // =====================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyBDTURKKzmhG8hZXlBryoQRdjqd70GI18c",
+    authDomain: "banflex-3e7c4.firebaseapp.com",
+    projectId: "banflex-3e7c4",
+    storageBucket: "banflex-3e7c4.appspot.com",
+    messagingSenderId: "192219628345",
+    appId: "1:192219628345:web:f1caa28230a5803e681ee8"
+  };
 
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    const auth = firebase.auth();
+  // =====================================================
+  // 2) INIT FIREBASE
+  // =====================================================
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const auth = firebase.auth();
 
-    /** @type {any[]} */
-    let ITEMS = [];
-    /** @type {Chart | null} */
-    let dashboardChart = null;
-    let currentUser = null; // Holds user auth object
-    let userRole = 'Guest'; // Holds user role from Firestore
-    let listeners = []; // To hold Firestore listeners
+  // =====================================================
+  // 3) STATE & HELPERS
+  // =====================================================
+  /** @type {any[]} */ let ITEMS = [];
+  /** @type {Chart | null} */ let dashboardChart = null;
+  /** @type {firebase.User|null} */ let currentUser = null;
+  let userRole = 'Guest';
+  /** @type {Array<() => void>} */ let listeners = [];
+  let popupTimeout;
 
-    /* ===== Helpers ===== */
-    const $ = (s) => document.querySelector(s);
-    const $$ = (s) => Array.from(document.querySelectorAll(s));
-    const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n || 0);
-    const num = (v) => Number(String(v || '').replace(/[^\d]/g, ''));
-    const fmtDate = (d) => { try { return new Date(d).toISOString().split('T')[0]; } catch(e) { return ''; } };
-    
-    let popupTimeout;
-    function showPopup(kind, text) {
-        clearTimeout(popupTimeout);
-        const p = $('#popup-container');
-        if (!p) return;
-        p.className = 'popup-container show popup-' + kind;
-        const iconEl = $('#popup-icon');
-        const messageEl = $('#popup-message');
-        if (!iconEl || !messageEl) return;
-        iconEl.className = kind === 'loading' ? 'spinner' : 'material-symbols-outlined';
-        iconEl.textContent = kind === 'success' ? 'check_circle' : (kind === 'error' ? 'cancel' : '');
-        messageEl.textContent = text;
-        if (kind !== 'loading') {
-            popupTimeout = setTimeout(() => p.classList.remove('show'), 4000);
-        }
+  const $  = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n || 0);
+  const fmtDate = (d) => { try { return new Date(d).toISOString().split('T')[0]; } catch { return ''; } };
+  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
+  function showPopup(kind, text) {
+    clearTimeout(popupTimeout);
+    const p = $('#popup-container');
+    if (!p) return;
+    p.className = 'popup-container show popup-' + kind;
+    const iconEl = $('#popup-icon');
+    const messageEl = $('#popup-message');
+    if (!iconEl || !messageEl) return;
+    iconEl.className = kind === 'loading' ? 'spinner' : 'material-symbols-outlined';
+    iconEl.textContent = kind === 'success' ? 'check_circle' : (kind === 'error' ? 'cancel' : '');
+    messageEl.textContent = text || '';
+    if (kind !== 'loading') {
+      popupTimeout = setTimeout(() => p.classList.remove('show'), 4000);
     }
-    
-    /* ===== Firebase Initialization & Auth ===== */
-    async function init() {
-        try {
-            await db.enablePersistence();
-            console.log("Firebase Offline Persistence enabled.");
-        } catch (err) {
-            if (err.code == 'failed-precondition') {
-                console.warn("Multiple tabs open, persistence can only be enabled in one tab at a time.");
-            } else if (err.code == 'unimplemented') {
-                console.warn("The current browser does not support all of the features required to enable persistence.");
-            }
-        }
+  }
 
-        injectPageHTML();
-        initUI();
-        initAuth();
-        initForms();
-        initModals();
-        initMonitoring();
-        initInstallPrompt();
-        
-        const lastPage = localStorage.getItem('lastActivePage') || 'dashboard';
-        showPage(lastPage);
-    }
-    
-    function initAuth() {
-        auth.onAuthStateChanged(async (user) => {
-            if (user) {
-                currentUser = user;
-                await checkUserRole(user);
-                updateUIForUser();
-                attachDataListeners();
-            } else {
-                currentUser = null;
-                userRole = 'Guest';
-                updateUIForUser();
-                detachDataListeners();
-                clearAllData();
-            }
-        });
-
-        const authBtn = $('#auth-btn');
-        const googleLoginBtn = $('#google-login-btn');
-        const authDropdownBtn = $('#auth-dropdown-btn');
-        
-        const handleLogin = () => {
-            const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider).catch(err => showPopup('error', err.message));
-        };
-
-        const handleLogout = () => auth.signOut();
-
-        if (authBtn) authBtn.addEventListener('click', () => {
-            if (currentUser) handleLogout();
-            else $('#login-modal')?.classList.remove('hidden');
-        });
-
-        if (googleLoginBtn) googleLoginBtn.addEventListener('click', handleLogin);
-        if (authDropdownBtn) authDropdownBtn.addEventListener('click', () => {
-             if (currentUser) handleLogout();
-             else {
-                $('#user-dropdown')?.classList.add('hidden');
-                $('#login-modal')?.classList.remove('hidden');
-             }
-        });
+  // =====================================================
+  // 4) BOOTSTRAP APP
+  // =====================================================
+  (async function init() {
+    // Offline persistence (best-effort)
+    try { await db.enablePersistence(); }
+    catch (err) {
+      if (err && err.code === 'failed-precondition') console.warn('Persistence gagal: multi-tab.');
+      else if (err && err.code === 'unimplemented') console.warn('Browser tidak support persistence.');
     }
 
-    async function checkUserRole(user) {
-        const userRef = db.collection('users').doc(user.uid);
-        const userDoc = await userRef.get();
+    injectPageHTML();
+    initUI();
+    initAuthBindings();   // pasang handler tombol login/logout dulu
 
-        if (!userDoc.exists) {
-            await userRef.set({
-                email: user.email,
-                name: user.displayName,
-                avatar: user.photoURL,
-                role: 'Pending',
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            userRole = 'Pending';
-            const pendingEmailEl = $('#pending-email');
-            if (pendingEmailEl) pendingEmailEl.textContent = user.email;
-            $('#pending-auth-modal')?.classList.remove('hidden');
-        } else {
-            userRole = userDoc.data().role;
-        }
-    }
+    // Ambil hasil redirect kalau flow login pakai redirect (mobile)
+    try { await auth.getRedirectResult(); }
+    catch (e) { console.warn('Redirect result error:', e); }
 
-    /* ===== UI & Navigation ===== */
-    function initUI() {
-        const sidebar = $('#sidebar'), scrim = $('#scrim');
-        if (!sidebar || !scrim) return;
+    // Dengarkan status auth → sumber kebenaran untuk navigasi
+    initAuthState();
 
-        const btnOpenNav = $('#btnOpenNav');
-        if (btnOpenNav) btnOpenNav.onclick = () => { sidebar.classList.add('open'); scrim.classList.add('show'); };
-        
-        scrim.onclick = () => { sidebar.classList.remove('open'); scrim.classList.remove('show'); };
-        
-        $$('[data-nav]').forEach(btn => {
-            if (!(btn instanceof HTMLElement) || !btn.dataset.nav) return;
-            btn.addEventListener('click', () => {
-                showPage(btn.dataset.nav);
-                if (window.innerWidth <= 992) {
-                    sidebar.classList.remove('open');
-                    scrim.classList.remove('show');
-                }
-            });
-        });
+    initForms();
+    initModals();
+    initMonitoring();
+    initInstallPrompt();
 
-        $$('[data-nav-link]').forEach(el => {
-            el.addEventListener('click', (e) => {
-                if (e.target.closest('button')) return;
-                const navId = (el instanceof HTMLElement) ? el.dataset.navLink : null;
-                if (navId) {
-                    const monitorTarget = (el instanceof HTMLElement) ? el.dataset.monitorTarget : null;
-                    const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
-                    if (targetNavElement instanceof HTMLElement) {
-                        targetNavElement.click();
-                        if (monitorTarget) {
-                            setTimeout(() => {
-                                const targetTab = $(`#page-monitoring .tab-btn[data-kategori="${monitorTarget}"]`);
-                                if (targetTab instanceof HTMLElement) targetTab.click();
-                            }, 50);
-                        }
-                    }
-                }
-            });
-        });
+    // Jangan paksa showPage di sini; tunggu auth siap di onAuthStateChanged
+  })();
 
-        $$('[data-quick-link]').forEach(el => {
-             el.addEventListener('click', () => {
-                if (el instanceof HTMLElement) {
-                    const navId = el.dataset.quickLink;
-                    const formTarget = el.dataset.formTarget;
-                    if (navId) {
-                        const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
-                        if (targetNavElement instanceof HTMLElement) {
-                            targetNavElement.click();
-                             if (formTarget) {
-                                setTimeout(() => {
-                                    const targetTab = $(`#input-type-selector .tab-btn[data-form="${formTarget}"]`);
-                                    if (targetTab instanceof HTMLElement) targetTab.click();
-                                }, 50);
-                            }
-                        }
-                    }
-                }
-            });
-        });
+  // =====================================================
+  // 5) AUTH: LISTENER & HANDLERS
+  // =====================================================
+  function initAuthState() {
+    auth.onAuthStateChanged(async (user) => {
+      // Dipanggil SELALU minimal sekali pada start
+      if (user) {
+        currentUser = user;
+        await checkUserRole(user);
+        updateUIForUser();
+        attachDataListeners();
 
-
-        const btnRefresh = $('#btnRefresh');
-        if (btnRefresh) btnRefresh.onclick = (e) => {
-            e.stopPropagation();
-            attachDataListeners();
-        };
-
-        const themeToggleBtn = $('#theme-toggle-btn');
-        if (themeToggleBtn) {
-            themeToggleBtn.onclick = () => {
-                document.body.classList.toggle('dark-theme');
-                localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
-            };
-        }
-        if (localStorage.getItem('theme') === 'dark') {
-            document.body.classList.add('dark-theme');
-        }
-
-        const searchBtn = $('#global-search-btn');
-        const searchContainer = $('#global-search-container');
-        if (searchBtn && searchContainer) {
-            searchBtn.onclick = () => {
-                searchContainer.classList.toggle('active');
-                if (searchContainer.classList.contains('active')) {
-                    $('#global-search-input')?.focus();
-                }
-            }
-        }
-
-        const userProfileBtn = $('#user-profile-btn');
-        const userDropdown = $('#user-dropdown');
-        if (userProfileBtn && userDropdown) {
-            userProfileBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                userDropdown.classList.toggle('show');
-            });
-        }
-        
-        const notificationBtn = $('#notification-btn');
-        const notificationDropdown = $('#notification-dropdown');
-        if(notificationBtn && notificationDropdown){
-            notificationBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                notificationDropdown.classList.toggle('show');
-            });
-        }
-        
-        window.addEventListener('click', (e) => {
-            const target = e.target;
-            if (userDropdown && !userDropdown.contains(target) && userProfileBtn && !userProfileBtn.contains(target)) {
-                userDropdown.classList.remove('show');
-            }
-            if (notificationDropdown && !notificationDropdown.contains(target) && notificationBtn && !notificationBtn.contains(target)) {
-                notificationDropdown.classList.remove('show');
-            }
-        });
-        
-    }
-
-    function showPage(id) {
-        $$('.page').forEach(p => p.classList.remove('active'));
-        const page = $(`#page-${id}`);
-        if(page) page.classList.add('active');
-        localStorage.setItem('lastActivePage', id);
-        
-        $$('.nav-item.active').forEach(el => el.classList.remove('active'));
-        const navButton = $(`.nav-item[data-nav="${id}"]`);
-        if (navButton) navButton.classList.add('active');
-    }
-
-    function updateUIForUser() {
-        const userAvatar = $('#user-avatar');
-        const userDropdownAvatar = $('#user-dropdown-avatar');
-        const userDropdownName = $('#user-dropdown-name');
-        const userDropdownEmail = $('#user-dropdown-email');
-        const authBtn = $('#auth-btn');
-        const authText = authBtn?.querySelector('.nav-text');
-        const authIcon = authBtn?.querySelector('.material-symbols-outlined');
-        const authDropdownBtn = $('#auth-dropdown-btn');
-
-        if (currentUser) {
-            const avatarUrl = currentUser.photoURL || `https://placehold.co/40x40/3b82f6/ffffff?text=${currentUser.displayName.charAt(0)}`;
-            if(userAvatar) userAvatar.src = avatarUrl;
-            if(userDropdownAvatar) userDropdownAvatar.src = avatarUrl.replace('40x40', '60x60');
-            if(userDropdownName) userDropdownName.textContent = currentUser.displayName;
-            if(userDropdownEmail) userDropdownEmail.textContent = currentUser.email;
-
-            if(authText) authText.textContent = 'Keluar';
-            if(authIcon) authIcon.textContent = 'logout';
-            if(authBtn) authBtn.classList.add('danger');
-            
-            if(authDropdownBtn) authDropdownBtn.innerHTML = `<span class="material-symbols-outlined">logout</span><span>Keluar</span>`;
-            if(authDropdownBtn) authDropdownBtn.classList.add('danger');
-
-        } else {
-            const guestAvatar = 'https://placehold.co/40x40/e2e8f0/64748b?text=G';
-            if(userAvatar) userAvatar.src = guestAvatar;
-            if(userDropdownAvatar) userDropdownAvatar.src = guestAvatar.replace('40x40', '60x60');
-            if(userDropdownName) userDropdownName.textContent = 'Guest';
-            if(userDropdownEmail) userDropdownEmail.textContent = 'Silakan login';
-
-            if(authText) authText.textContent = 'Login';
-            if(authIcon) authIcon.textContent = 'login';
-            if(authBtn) authBtn.classList.remove('danger');
-            
-            if(authDropdownBtn) authDropdownBtn.innerHTML = `<span class="material-symbols-outlined">login</span><span>Login dengan Google</span>`;
-            if(authDropdownBtn) authDropdownBtn.classList.remove('danger');
-        }
-        
-        $$('[data-role]').forEach(el => {
-            if (el instanceof HTMLElement) {
-                const roles = el.dataset.role.split(',');
-                el.style.display = roles.includes(userRole) ? '' : 'none';
-            }
-        });
-    }
-    
-    function clearAllData() { 
-        $$('.kpi h3').forEach(el => el.innerHTML = rupiah(0));
-        $('#dashboard-absensi-container').innerHTML = '';
-        $('#recent-activity-container').innerHTML = '';
-        $('#upcoming-bills-container').innerHTML = '';
-        $('#bills-list-container').innerHTML = '';
-        if(dashboardChart) dashboardChart.destroy();
-    }
-    
-    function attachDataListeners() {
+        // Tutup modal login bila terbuka & arahkan ke dashboard
+        $('#login-modal')?.classList.add('hidden');
+        showPage('dashboard');
+      } else {
+        currentUser = null;
+        userRole = 'Guest';
+        updateUIForUser();
         detachDataListeners();
-        if (!currentUser) return;
-        showPopup('loading', 'Memuat data...');
-        const uid = currentUser.uid;
+        clearAllData();
 
-        const workersRef = db.collection('users').doc(uid).collection('workers');
-        const workerListener = workersRef.onSnapshot(snapshot => {
-            const workers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            populateWorkers(workers);
-        }, err => console.error("Error fetching workers:", err));
-        listeners.push(workerListener);
-        
+        // App sederhana → tetap di dashboard dengan mode Guest
+        showPage('dashboard');
+      }
+    });
+  }
+
+  function initAuthBindings() {
+    const authBtn = $('#auth-btn');
+    const googleLoginBtn = $('#google-login-btn');
+    const authDropdownBtn = $('#auth-dropdown-btn');
+
+    const handleLogin = () => {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      const promise = isMobile
+        ? auth.signInWithRedirect(provider)  // stabil di mobile
+        : auth.signInWithPopup(provider);    // enak di desktop
+      promise.catch(err => showPopup('error', err.message));
+    };
+
+    const handleLogout = () => auth.signOut();
+
+    if (authBtn) authBtn.addEventListener('click', () => {
+      if (currentUser) handleLogout();
+      else $('#login-modal')?.classList.remove('hidden');
+    });
+
+    if (googleLoginBtn) googleLoginBtn.addEventListener('click', handleLogin);
+
+    if (authDropdownBtn) authDropdownBtn.addEventListener('click', () => {
+      if (currentUser) handleLogout();
+      else {
+        $('#user-dropdown')?.classList.add('hidden');
+        $('#login-modal')?.classList.remove('hidden');
+      }
+    });
+  }
+
+  async function checkUserRole(user) {
+    const userRef = db.collection('users').doc(user.uid);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      await userRef.set({
+        email: user.email,
+        name: user.displayName,
+        avatar: user.photoURL,
+        role: 'Pending',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      userRole = 'Pending';
+      const el = $('#pending-email'); if (el) el.textContent = user.email || '';
+      $('#pending-auth-modal')?.classList.remove('hidden');
+    } else {
+      userRole = userDoc.data().role || 'Guest';
+    }
+  }
+
+  // =====================================================
+  // 6) UI & NAV
+  // =====================================================
+  function initUI() {
+    const sidebar = $('#sidebar'), scrim = $('#scrim');
+    const btnOpenNav = $('#btnOpenNav');
+    if (btnOpenNav) btnOpenNav.onclick = () => { sidebar?.classList.add('open'); scrim?.classList.add('show'); };
+    scrim?.addEventListener('click', () => { sidebar?.classList.remove('open'); scrim?.classList.remove('show'); });
+
+    $$('[data-nav]').forEach(btn => {
+      if (!(btn instanceof HTMLElement) || !btn.dataset.nav) return;
+      btn.addEventListener('click', () => {
+        showPage(btn.dataset.nav);
+        if (window.innerWidth <= 992) { sidebar?.classList.remove('open'); scrim?.classList.remove('show'); }
+      });
+    });
+
+    $$('[data-nav-link]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('button')) return;
+        const navId = (el instanceof HTMLElement) ? el.dataset.navLink : null;
+        if (navId) {
+          document.querySelector(`.nav-item[data-nav="${navId}"]`)?.dispatchEvent(new Event('click'));
+        }
+      });
+    });
+
+    $$('[data-quick-link]').forEach(el => {
+      el.addEventListener('click', () => {
+        if (!(el instanceof HTMLElement)) return;
+        const navId = el.dataset.quickLink;
+        const formTarget = el.dataset.formTarget;
+        if (!navId) return;
+        document.querySelector(`.nav-item[data-nav="${navId}"]`)?.dispatchEvent(new Event('click'));
+        if (formTarget) {
+          setTimeout(() => {
+            const targetTab = document.querySelector(`#input-type-selector .tab-btn[data-form="${formTarget}"]`);
+            if (targetTab instanceof HTMLElement) targetTab.click();
+          }, 50);
+        }
+      });
+    });
+
+    $('#btnRefresh')?.addEventListener('click', (e) => { e.stopPropagation(); attachDataListeners(); });
+
+    const themeToggleBtn = $('#theme-toggle-btn');
+    if (themeToggleBtn) {
+      themeToggleBtn.onclick = () => {
+        document.body.classList.toggle('dark-theme');
+        localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
+      };
+      if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-theme');
+    }
+
+    const userProfileBtn = $('#user-profile-btn');
+    const userDropdown = $('#user-dropdown');
+    userProfileBtn?.addEventListener('click', (e) => { e.stopPropagation(); userDropdown?.classList.toggle('show'); });
+
+    const notificationBtn = $('#notification-btn');
+    const notificationDropdown = $('#notification-dropdown');
+    notificationBtn?.addEventListener('click', (e) => { e.stopPropagation(); notificationDropdown?.classList.toggle('show'); });
+
+    window.addEventListener('click', (e) => {
+      const t = e.target;
+      if (userDropdown && !userDropdown.contains(t) && userProfileBtn && !userProfileBtn.contains(t)) userDropdown.classList.remove('show');
+      if (notificationDropdown && !notificationDropdown.contains(t) && notificationBtn && !notificationBtn.contains(t)) notificationDropdown.classList.remove('show');
+    });
+  }
+
+  function showPage(id) {
+    $$('.page').forEach(p => p.classList.remove('active'));
+    const page = $(`#page-${id}`);
+    if (page) page.classList.add('active');
+    localStorage.setItem('lastActivePage', id);
+    $$('.nav-item.active').forEach(el => el.classList.remove('active'));
+    const navButton = $(`.nav-item[data-nav="${id}"]`);
+    navButton?.classList.add('active');
+  }
+
+  function updateUIForUser() {
+    const userAvatar = $('#user-avatar');
+    const userDropdownAvatar = $('#user-dropdown-avatar');
+    const userDropdownName = $('#user-dropdown-name');
+    const userDropdownEmail = $('#user-dropdown-email');
+    const authBtn = $('#auth-btn');
+    const authText = authBtn?.querySelector('.nav-text');
+    const authIcon = authBtn?.querySelector('.material-symbols-outlined');
+    const authDropdownBtn = $('#auth-dropdown-btn');
+
+    if (currentUser) {
+      const initial = (currentUser.displayName || 'U').charAt(0).toUpperCase();
+      const avatarUrl = currentUser.photoURL || `https://placehold.co/40x40/3b82f6/ffffff?text=${initial}`;
+      if (userAvatar) userAvatar.src = avatarUrl;
+      if (userDropdownAvatar) userDropdownAvatar.src = avatarUrl.replace('40x40', '60x60');
+      if (userDropdownName) userDropdownName.textContent = currentUser.displayName || 'User';
+      if (userDropdownEmail) userDropdownEmail.textContent = currentUser.email || '';
+
+      if (authText) authText.textContent = 'Keluar';
+      if (authIcon) authIcon.textContent = 'logout';
+      authBtn?.classList.add('danger');
+
+      if (authDropdownBtn) {
+        authDropdownBtn.innerHTML = `<span class="material-symbols-outlined">logout</span><span>Keluar</span>`;
+        authDropdownBtn.classList.add('danger');
+      }
+    } else {
+      const guestAvatar = 'https://placehold.co/40x40/e2e8f0/64748b?text=G';
+      if (userAvatar) userAvatar.src = guestAvatar;
+      if (userDropdownAvatar) userDropdownAvatar.src = guestAvatar.replace('40x40', '60x60');
+      if (userDropdownName) userDropdownName.textContent = 'Guest';
+      if (userDropdownEmail) userDropdownEmail.textContent = 'Silakan login';
+
+      if (authText) authText.textContent = 'Login';
+      if (authIcon) authIcon.textContent = 'login';
+      authBtn?.classList.remove('danger');
+
+      if (authDropdownBtn) {
+        authDropdownBtn.innerHTML = `<span class="material-symbols-outlined">login</span><span>Login dengan Google</span>`;
+        authDropdownBtn.classList.remove('danger');
+      }
+    }
+
+    // Show/hide elemen berdasar role
+    $$('[data-role]').forEach(el => {
+      if (el instanceof HTMLElement) {
+        const roles = (el.dataset.role || '').split(',').map(s => s.trim());
+        el.style.display = roles.includes(userRole) ? '' : 'none';
+      }
+    });
+  }
+
+  // =====================================================
+  // 7) DATA LISTENERS
+  // =====================================================
+  function attachDataListeners() {
+    detachDataListeners();
+    if (!currentUser) return;
+    showPopup('loading', 'Memuat data…');
+    const uid = currentUser.uid;
+
+    const workersRef = db.collection('users').doc(uid).collection('workers');
+    const unsubWorkers = workersRef.onSnapshot(
+      (snap) => {
+        const workers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        populateWorkers(workers);
         showPopup('success', 'Data real-time aktif.');
-    }
+      },
+      (err) => { console.error('Workers error:', err); showPopup('error', 'Gagal memuat data.'); }
+    );
+    listeners.push(unsubWorkers);
+  }
 
-    function detachDataListeners() {
-        listeners.forEach(unsubscribe => unsubscribe());
-        listeners = [];
-    }
+  function detachDataListeners() {
+    listeners.forEach(unsub => { try { unsub(); } catch {} });
+    listeners = [];
+  }
 
-    /* ===== Form Handlers ===== */
-    function initForms(){
-        // ...
-    }
-    
-    function initModals() {
-        // ...
-    }
-    function initMonitoring() { /* Logic for monitoring page */ }
-    function populateWorkers(workers) {
-        // ...
-    }
-    
-    function initStokMaterialPage() {}
-    function initPengaturanPage() {}
-    function initTagihanPage() {}
-    function initInstallPrompt() {
-        let deferredPrompt;
-        const installToast = $('#install-toast');
-        const installBtn = $('#install-btn');
-        const dismissInstallBtn = $('#dismiss-install-btn');
+  function clearAllData() {
+    $$('.kpi h3').forEach(el => { el.innerHTML = rupiah(0); });
+    $('#dashboard-absensi-container')?.replaceChildren();
+    $('#recent-activity-container')?.replaceChildren();
+    $('#upcoming-bills-container')?.replaceChildren();
+    $('#bills-list-container')?.replaceChildren();
+    if (dashboardChart) { try { dashboardChart.destroy(); } catch {} dashboardChart = null; }
+  }
 
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            installToast?.classList.remove('hidden');
-        });
+  // =====================================================
+  // 8) FORMS / MODALS / MONITORING (STUB)
+  // =====================================================
+  function initForms(){ /* …isi sesuai kebutuhan… */ }
+  function initModals(){ /* …isi sesuai kebutuhan… */ }
+  function initMonitoring(){ /* …isi sesuai kebutuhan… */ }
+  function populateWorkers(workers){ /* …render daftar pekerja… */ }
 
-        if(installBtn) installBtn.addEventListener('click', async () => {
-            installToast?.classList.add('hidden');
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log(`User response to the install prompt: ${outcome}`);
-                deferredPrompt = null;
-            }
-        });
+  // =====================================================
+  // 9) PWA INSTALL
+  // =====================================================
+  function initInstallPrompt() {
+    let deferredPrompt;
+    const installToast = $('#install-toast');
+    const installBtn = $('#install-btn');
+    const dismissInstallBtn = $('#dismiss-install-btn');
 
-        if(dismissInstallBtn) dismissInstallBtn.addEventListener('click', () => {
-            installToast?.classList.add('hidden');
-        });
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installToast?.classList.remove('hidden');
+    });
 
-        window.addEventListener('appinstalled', () => {
-            installToast?.classList.add('hidden');
-        });
-    }
+    installBtn?.addEventListener('click', async () => {
+      installToast?.classList.add('hidden');
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+        deferredPrompt = null;
+      }
+    });
 
-    function injectPageHTML() { 
-       const container = $('.page-container');
-        if(!container) return;
-        container.innerHTML += `
-        <main id="page-dashboard" class="page active">
-          <!-- Dashboard content from index.html -->
-        </main>
-        <main id="page-input-data" class="page">
-            <!-- Input Data page content -->
-        </main>
-        <main id="page-absensi" class="page">
-            <!-- Absensi page content -->
-        </main>
-        <main id="page-stok-material" class="page">
-            <!-- Stok Material page content -->
-        </main>
-        <main id="page-tagihan" class="page">
-            <!-- Tagihan page content -->
-        </main>
-        <main id="page-monitoring" class="page">
-            <!-- Laporan/Monitoring page content -->
-        </main>
-        <main id="page-pengaturan" class="page">
-            <!-- Pengaturan page content -->
-        </main>
-        `;
-     }
+    dismissInstallBtn?.addEventListener('click', () => installToast?.classList.add('hidden'));
+    window.addEventListener('appinstalled', () => installToast?.classList.add('hidden'));
+  }
 
-    init(); // Start the application
+  // =====================================================
+  // 10) INJECT HALAMAN (placeholder)
+  // =====================================================
+  function injectPageHTML() {
+    const container = $('.page-container');
+    if (!container) return;
+    container.innerHTML += `
+      <main id="page-dashboard" class="page active">
+        <!-- Dashboard content -->
+      </main>
+      <main id="page-input-data" class="page"><!-- Input Data --></main>
+      <main id="page-absensi" class="page"><!-- Absensi --></main>
+      <main id="page-stok-material" class="page"><!-- Stok Material --></main>
+      <main id="page-tagihan" class="page"><!-- Tagihan --></main>
+      <main id="page-monitoring" class="page"><!-- Monitoring --></main>
+      <main id="page-pengaturan" class="page"><!-- Pengaturan --></main>
+    `;
+  }
 });
-
