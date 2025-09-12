@@ -18,14 +18,8 @@
   <!-- Chart.js (untuk dashboard nanti) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 
-  <!-- Firebase v8 (wajib untuk script.js) -->
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-storage.js"></script>
-
-  <!-- Styles -->
-  <link rel="stylesheet" href="style.css" />
+  <!-- Styles (Gunakan file CSS revisi) -->
+  <link rel="stylesheet" href="style.revisi.css" />
 </head>
 <body>
   <div id="app-shell">
@@ -88,18 +82,15 @@
         </div>
 
         <div class="header-actions">
-          <!-- Status Koneksi (dot only) -->
           <div id="connection-status" class="connection-status" title="Status koneksi">
             <span class="status-dot offline"></span>
           </div>
 
-          <!-- Theme toggle -->
           <button id="theme-toggle-btn" class="icon-btn" aria-label="Ganti Tema">
             <span class="material-symbols-outlined light-icon">light_mode</span>
             <span class="material-symbols-outlined dark-icon">dark_mode</span>
           </button>
 
-          <!-- User dropdown -->
           <div class="user-profile-wrapper">
             <button id="user-profile-btn" class="user-profile-btn" aria-label="Profil">
               <img id="user-avatar" src="https://placehold.co/40x40/e2e8f0/64748b?text=G" alt="Avatar Pengguna" />
@@ -122,14 +113,13 @@
           </div>
         </div>
       </header>
-
-      <!-- Halaman akan di-inject oleh script.js -->
+      
       <div class="page-container"></div>
     </div>
   </div>
 
   <!-- FAB (opsional) -->
-  <button id="fab-add-btn" class="fab" aria-label="Tambah Data">
+  <button id="fab-add-btn" class="fab" aria-label="Tambah Data" style="display: none;">
     <span class="material-symbols-outlined">add</span>
   </button>
 
@@ -144,33 +134,36 @@
     </div>
   </div>
 
-  <!-- Modal Login -->
-  <div class="modal-content">
-    <div class="auth-card">
-      <div class="auth-header">
-        <h4>Login atau Sign In</h4>
+  <!-- PERBAIKAN: Struktur Modal Login yang Benar -->
+  <div id="login-modal" class="modal-bg hidden">
+      <div class="modal-content">
+        <div class="auth-card">
+          <div class="auth-header">
+            <h4>Login atau Sign In</h4>
+          </div>
+          <div class="auth-body">
+            <p>Hubungkan akun Google Anda untuk mengakses semua fitur aplikasi.</p>
+          </div>
+          <div class="auth-actions">
+            <button class="btn btn-secondary" id="close-login-modal-btn">
+              Tutup
+            </button>
+            <button id="google-login-btn" class="btn google-btn w-full">
+              <svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"></path>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
+              </svg>
+              <span>Masuk dengan Google</span>
+            </button>
+          </div>
+        </div>
       </div>
-      <div class="auth-body">
-        <p>Hubungkan akun Google Anda untuk mengakses semua fitur aplikasi.</p>
-      </div>
-      <div class="auth-actions">
-        <button class="btn btn-secondary" onclick="document.getElementById('login-modal').classList.add('hidden')">
-          Tutup
-        </button>
-        <button id="google-login-btn" class="btn google-btn w-full">
-          <svg class="google-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"></path>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
-          </svg>
-          <span>Masuk dengan Google</span>
-        </button>
-      </div>
-    </div>
   </div>
   
-  <!-- App Script -->
-  <script src="script.js"></script>
+  <!-- App Script (Gunakan file JS revisi) -->
+  <script type="module" src="script.revisi.js"></script>
+
 </body>
 </html>
