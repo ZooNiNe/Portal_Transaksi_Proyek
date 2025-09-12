@@ -1,31 +1,13 @@
 // @ts-check
 /* =======================================================
- * PKP Frontend — Fase 3
- * - Absensi -> Akrual Upah otomatis (ke Payables 'upah' mingguan)
- * - Loan Engine (jadwal cicilan amortisasi)
- * - Monitoring: grafik arus kas 30 hari & pengeluaran per kategori
- * - Tetap kompatibel Fase 1/2
+ * PKP Frontend — v4.2 (Payment Hub + Approval Center + Export)
  * ======================================================= */
 
-/**
- * @global {any} firebase
- * @global {any} Chart
- */
-
 document.addEventListener('DOMContentLoaded', () => {
-    // ====== Konfigurasi dasar ======
     const OWNER_EMAIL = 'dq060412@gmail.com';
     const TEAM_ID = 'main';
   
-    const DEFAULT_POLICY = {
-      contingencyTargetPct: 0.07,
-      bufferPct: 0.04,
-      gatingThresholds: { lt70: 0.5, btw70_90: 0.75, gt90: 1.0 },
-      noNewDebtMode: true,
-      timezone: 'Asia/Jakarta'
-    };
-  
-    // ===== PASTE CONFIG FIREBASE KAMU =====
+    // ===== FIREBASE CONFIG =====
     const firebaseConfig = {
       apiKey: "AIzaSyBDTURKKzmhG8hZXlBryoQRdjqd70GI18c",
       authDomain: "banflex-3e7c4.firebaseapp.com",
@@ -35,81 +17,135 @@ document.addEventListener('DOMContentLoaded', () => {
       appId: "1:192219628345:web:f1caa28230a5803e681ee8"
     };
   
-    // ====== Init Firebase ======
+    // ===== Init Firebase =====
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const auth = firebase.auth();
     db.enablePersistence().catch(()=>{});
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
   
-    // ====== State ======
-    /** @type {firebase.User|null} */ let currentUser = null;
-    /** @type {'Guest'|'Pending'|'Viewer'|'Editor'|'Admin'|'Owner'} */ let userRole = 'Guest';
-    let policy = { ...DEFAULT_POLICY };
+    // ===== State =====
+    let currentUser = null;
+    /** @type {'Guest'|'Pending'|'Viewer'|'Editor'|'Admin'|'Owner'} */
+    let userRole = 'Guest';
   
-    // ====== Helpers ======
-    const $ = (s)=>document.querySelector(s);
-    const $$ = (s)=>Array.from(document.querySelectorAll(s));
+    // ===== Refs =====
+    const teamRef = db.collection('teams').doc(TEAM_ID);
+    const membersCol = teamRef.collection('members');
+    const projectsCol = teamRef.collection('projects');
+    const envelopesCol = teamRef.collection('fund_envelopes');
+    const payablesCol = teamRef.collection('payables');          // Tagihan
+    const entriesCol = teamRef.collection('entries');            // Jurnal ringan
+    const workersCol = teamRef.collection('workers');
+    const attendanceCol = teamRef.collection('attendance');
+    const changeRequestsCol = teamRef.collection('change_requests');
+  
+    // ===== Helpers =====
+    const $  = (s) => document.querySelector(s);
+    const $$ = (s) => Array.from(document.querySelectorAll(s));
     const fmtIDR = (n)=> new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',minimumFractionDigits:0}).format(Number(n||0));
-    const asNum = (v)=> Number(String(v ?? 0).toString().replace(/[^\d.-]/g,'')||0);
     const todayStr = ()=> new Date().toISOString().slice(0,10);
+    const asNum = (v)=> Number(String(v ?? 0).toString().replace(/[^\d.-]/g,'')||0);
+    const isMobileLike = () => /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+    const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const sleep = (ms)=> new Promise(r=>setTimeout(r,ms));
   
-    function startOfWeek(d=new Date()){ const dt=new Date(d); const day=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-day); dt.setHours(0,0,0,0); return dt; } // Senin
-    function endOfWeek(d=new Date()){ const s=startOfWeek(d); const e=new Date(s); e.setDate(s.getDate()+6); e.setHours(23,59,59,999); return e; }
-    function weekKey(d=new Date()){ const s=startOfWeek(d).toISOString().slice(0,10); const e=endOfWeek(d).toISOString().slice(0,10); return `${s}_${e}`; }
-  
+    // Toast
     let popupTimeout;
     function toast(kind, text){
       clearTimeout(popupTimeout);
       const p = $('#popup-container'); if(!p) return;
-      p.className = 'popup-container show popup-'+kind;
-      const ic = $('#popup-icon'), msg = $('#popup-message');
-      if(ic && msg){ ic.className = (kind==='loading'?'spinner':'material-symbols-outlined'); ic.textContent = kind==='success'?'check_circle':(kind==='error'?'cancel':''); msg.textContent=text; }
-      if(kind!=='loading'){ popupTimeout = setTimeout(()=>p.classList.remove('show'),3500); }
+      p.className = 'popup-container show popup-' + kind;
+      const iconEl = $('#popup-icon'); const messageEl = $('#popup-message');
+      if(iconEl && messageEl){
+        iconEl.className = kind === 'loading' ? 'spinner' : 'material-symbols-outlined';
+        iconEl.textContent = kind === 'success' ? 'check_circle' : (kind === 'error' ? 'cancel' : '');
+        messageEl.textContent = text;
+      }
+      if(kind !== 'loading'){
+        popupTimeout = setTimeout(() => p.classList.remove('show'), 2800);
+      }
     }
-    function setConnectionDot(color){ const dot=$('#connection-status .status-dot'); if(!dot) return; dot.classList.remove('online','pending','offline'); dot.classList.add(color==='green'?'online':color==='yellow'?'pending':'offline'); }
+    function setConnectionDot(color){ // green|yellow|red
+      const dot = $('#connection-status .status-dot'); if(!dot) return;
+      dot.classList.remove('online','pending','offline');
+      dot.classList.add(color === 'green' ? 'online' : color === 'yellow' ? 'pending' : 'offline');
+    }
+    function lockScroll(lock){ document.body.classList.toggle('modal-open', !!lock); }
   
-    // ====== Firestore Refs ======
-    const teamRef = db.collection('teams').doc(TEAM_ID);
-    const projectsCol = teamRef.collection('projects');
-    const envelopesCol = teamRef.collection('fund_envelopes');
-    const commitmentsCol = teamRef.collection('commitments');
-    const payablesCol = teamRef.collection('payables');
-    const entriesCol = teamRef.collection('entries');
-    const allocationsCol = teamRef.collection('allocations');
-    const loansCol = teamRef.collection('loans');
-    const membersCol = teamRef.collection('members');
-    const workersCol = teamRef.collection('workers');       // Fase 3
-    const attendanceCol = teamRef.collection('attendance'); // Fase 3
+    // UI Boot
+    wireUI();
+    ensurePagesInjected();
+    showPage('dashboard');
+    reflectGuestPlaceholder('dashboard');
   
-    // ====== UI wiring ======
-    initUI(); ensurePagesInjected();
+    function wireUI(){
+      // Sidebar
+      const sidebar = $('#sidebar'), scrim = $('#scrim');
+      $('#btnOpenNav')?.addEventListener('click', ()=>{ sidebar?.classList.add('open'); scrim?.classList.add('show'); });
+      scrim?.addEventListener('click', ()=>{ sidebar?.classList.remove('open'); scrim?.classList.remove('show'); });
   
-    function initUI(){
-      const sidebar=$('#sidebar'), scrim=$('#scrim');
-      $('#btnOpenNav')?.addEventListener('click',()=>{sidebar?.classList.add('open');scrim?.classList.add('show');});
-      scrim?.addEventListener('click',()=>{sidebar?.classList.remove('open');scrim?.classList.remove('show');});
-      // theme
-      if(localStorage.getItem('theme')==='dark') document.body.classList.add('dark-theme');
-      $('#theme-toggle-btn')?.addEventListener('click',()=>{document.body.classList.toggle('dark-theme');localStorage.setItem('theme',document.body.classList.contains('dark-theme')?'dark':'light');});
-      // profile dropdown
-      const userBtn=$('#user-profile-btn'), userDd=$('#user-dropdown');
-      userBtn?.addEventListener('click',(e)=>{e.stopPropagation();userDd?.classList.toggle('hidden');});
-      window.addEventListener('click',(e)=>{ if(userDd && !userDd.contains(e.target) && userBtn && !userBtn.contains(e.target)) userDd.classList.add('hidden'); });
-      // nav
+      // Theme
+      if(localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-theme');
+      $('#theme-toggle-btn')?.addEventListener('click', ()=>{
+        document.body.classList.toggle('dark-theme');
+        localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark':'light');
+      });
+  
+      // User dropdown
+      const userBtn = $('#user-profile-btn'), userDd = $('#user-dropdown');
+      userBtn?.addEventListener('click', (e)=>{ e.stopPropagation(); userDd?.classList.toggle('hidden'); });
+      window.addEventListener('click', (e)=>{ if(userDd && !userDd.contains(e.target) && userBtn && !userBtn.contains(e.target)) userDd.classList.add('hidden'); });
+  
+      // Global Search
+      const searchBtn = $('#global-search-btn');
+      const searchWrap = $('#global-search-container');
+      const searchInput = $('#global-search-input');
+      searchBtn?.addEventListener('click', ()=>{
+        searchWrap?.classList.toggle('active');
+        if(searchWrap?.classList.contains('active')) { searchWrap.classList.remove('hidden'); searchInput?.focus(); }
+        else { searchWrap?.classList.add('hidden'); }
+      });
+      searchInput?.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter'){
+          const q = (searchInput.value||'').trim().toLowerCase();
+          const map = { dashboard:'dashboard', tagihan:'tagihan', absensi:'absensi', pengaturan:'pengaturan', laporan:'monitoring', material:'stok-material', input:'input-data' };
+          if(map[q]) { showPage(map[q]); toast('success', `Pindah ke ${q}`); renderIfNeeded(map[q]); }
+          else { toast('error','Menu tidak dikenali'); }
+        }
+      });
+  
+      // Auth
+      $('#auth-btn')?.addEventListener('click', ()=>{ if(currentUser) auth.signOut(); else openLoginModal(); });
+      $('#auth-dropdown-btn')?.addEventListener('click', ()=>{ if(currentUser) auth.signOut(); else { $('#user-dropdown')?.classList.add('hidden'); openLoginModal(); }});
+      $('#google-login-btn')?.addEventListener('click', signInWithGoogle);
+  
+      // Nav
       $$('[data-nav]').forEach(btn=>{
-        btn.addEventListener('click',()=>{
-          const id=btn.getAttribute('data-nav'); showPage(id);
-          if(id==='dashboard') renderDashboard();
-          if(id==='tagihan') renderPaymentHub();
-          if(id==='absensi') renderAbsensiPage();
-          if(id==='pengaturan') renderPengaturanPage();
-          sidebar?.classList.remove('open'); scrim?.classList.remove('show');
+        btn.addEventListener('click', ()=>{
+          const id = btn.getAttribute('data-nav');
+          showPage(id);
+          reflectGuestPlaceholder(id);
+          renderIfNeeded(id);
         });
       });
-      // auth
-      $('#auth-btn')?.addEventListener('click',()=>{ if(currentUser) auth.signOut(); else $('#login-modal')?.classList.remove('hidden'); });
-      $('#auth-dropdown-btn')?.addEventListener('click',()=>{ if(currentUser) auth.signOut(); else { $('#user-dropdown')?.classList.add('hidden'); $('#login-modal')?.classList.remove('hidden'); }});
-      $('#google-login-btn')?.addEventListener('click', signInWithGoogle);
+  
+      // Modal close by backdrop
+      document.body.addEventListener('click', (e)=>{
+        const t = e.target;
+        if(t?.matches?.('.modal-bg')){ t.classList.add('hidden'); t.remove(); lockScroll(false); }
+      });
+    }
+  
+    function renderIfNeeded(id){
+      if(id==='dashboard') initDashboardLight();
+      if(id==='tagihan') renderTagihanTable();
+      if(id==='pengaturan') renderApprovalCenter();
+    }
+  
+    function openLoginModal(){
+      $('#login-modal')?.classList.remove('hidden');
+      lockScroll(true);
     }
   
     function ensurePagesInjected(){
@@ -122,33 +158,44 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="chips">
               <span class="chip" id="chip-contract">Kontrak: -</span>
               <span class="chip" id="chip-progress">Progres: -</span>
-              <span class="chip" id="chip-mode">Tanpa Utang: -</span>
             </div>
           </div>
           <div class="kpi-grid" id="envelope-cards"></div>
-          <div class="section-head">
-            <h4>Aksi Cepat</h4>
-            <div>
-              <button id="btn-termin" class="btn btn-primary">Termin Cair</button>
-              <button id="btn-payment-hub" class="btn btn-secondary">Payment Hub</button>
+          <div class="card card-pad responsive-info">
+            <p>Gunakan menu di kiri. Mode tamu menampilkan placeholder hingga Anda login.</p>
+            <div class="mt8">
+              <button class="btn btn-secondary" id="btn-export-dash">Export Snapshot</button>
             </div>
           </div>
-          <div class="charts">
-            <div class="card card-pad"><h4 style="margin:0 0 8px 0">Arus Kas 30 Hari</h4><canvas id="cf30"></canvas></div>
-            <div class="card card-pad"><h4 style="margin:0 0 8px 0">Pengeluaran per Kategori (30 Hari)</h4><canvas id="cat30"></canvas></div>
-          </div>
-          <div id="dash-tables" style="margin-top:12px"></div>
         </main>
   
-        <main id="page-input-data" class="page"><div class="data-zone"></div></main>
-        <main id="page-absensi" class="page"><div class="data-zone"></div></main>
-        <main id="page-stok-material" class="page"><div class="data-zone"></div></main>
-        <main id="page-tagihan" class="page"><div class="data-zone"></div></main>
-        <main id="page-monitoring" class="page"><div class="data-zone"></div></main>
-        <main id="page-pengaturan" class="page"><div class="data-zone"></div></main>
+        <main id="page-input-data" class="page">
+          <div class="data-zone"></div>
+        </main>
+  
+        <main id="page-absensi" class="page">
+          <div class="data-zone"></div>
+        </main>
+  
+        <main id="page-stok-material" class="page">
+          <div class="data-zone"></div>
+        </main>
+  
+        <main id="page-tagihan" class="page">
+          <div class="data-zone"></div>
+        </main>
+  
+        <main id="page-monitoring" class="page">
+          <div class="data-zone"></div>
+        </main>
+  
+        <main id="page-pengaturan" class="page">
+          <div class="data-zone"></div>
+        </main>
       `;
-      injectPlannerModal();
-      injectPaymentModal();
+  
+      // export button
+      $('#btn-export-dash')?.addEventListener('click', exportDashboardSnapshot);
     }
   
     function showPage(id){
@@ -156,79 +203,25 @@ document.addEventListener('DOMContentLoaded', () => {
       $(`#page-${id}`)?.classList.add('active');
       $$('.nav-item.active').forEach(el=>el.classList.remove('active'));
       $(`.nav-item[data-nav="${id}"]`)?.classList.add('active');
-      reflectGuestPlaceholder(id);
     }
   
     function reflectGuestPlaceholder(id){
-      const isGuest = !currentUser || userRole==='Pending';
       const container = $(`#page-${id}`); if(!container) return;
-      let zone = container.querySelector('.data-zone'); if(!zone){ zone=document.createElement('div'); zone.className='data-zone'; container.appendChild(zone); }
-      if(isGuest){
+      let zone = container.querySelector('.data-zone');
+      if(!zone){ zone = document.createElement('div'); zone.className = 'data-zone'; container.appendChild(zone); }
+      if(!currentUser || userRole==='Pending'){
         zone.innerHTML = `
-          <div class="card" style="padding:1rem;margin-top:1rem">
-            <p><strong>Mode Tamu/Pending</strong></p>
-            <p>Data disembunyikan. <button class="btn btn-primary" id="prompt-login-inline">Login untuk melihat data</button></p>
+          <div class="card placeholder-card">
+            <div class="placeholder-title">Mode Tamu</div>
+            <div class="placeholder-desc">Data tidak ditampilkan. Silakan login untuk melihat data.</div>
+            <button class="btn btn-primary" id="placeholder-login">Login</button>
           </div>`;
-        $('#prompt-login-inline')?.addEventListener('click',()=>$('#login-modal')?.classList.remove('hidden'));
-      }
-    }
-  
-    // ====== Auth ======
-    auth.onAuthStateChanged(async (user)=>{
-      if(user){
-        currentUser = user;
-        await ensureMemberDoc(user);
-        await loadPolicy();
-        await ensureProjectSeed();
-        updateHeaderForUser(user);
-        setConnectionDot(userRole==='Pending'?'yellow':'green');
-        toast('success',`Terhubung sebagai ${user.email}`);
-        renderDashboard();
-        showPage('dashboard');
+        $('#placeholder-login')?.addEventListener('click', openLoginModal);
       }else{
-        currentUser=null; userRole='Guest';
-        updateHeaderForUser(null);
-        setConnectionDot('red');
-        showPage('dashboard');
+        if(zone.classList.contains('placeholder')) { zone.innerHTML=''; zone.classList.remove('placeholder'); }
       }
-    });
-  
-    async function signInWithGoogle(){
-      try{
-        const provider=new firebase.auth.GoogleAuthProvider();
-        await auth.signInWithPopup(provider);
-        $('#login-modal')?.classList.add('hidden');
-      }catch(e){ console.error(e); toast('error', e?.message||'Gagal login'); }
     }
   
-    async function ensureMemberDoc(user){
-      const uid=user.uid;
-      const memberRef = membersCol.doc(uid);
-      const snap = await memberRef.get();
-      if(!snap.exists){
-        const role = user.email?.toLowerCase()===OWNER_EMAIL ? 'Owner' : 'Pending';
-        await memberRef.set({
-          uid, email:user.email||'', name:user.displayName||'', photoURL:user.photoURL||'',
-          role, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        userRole = role;
-      }else{
-        userRole = snap.data().role || 'Pending';
-        if(user.email?.toLowerCase()===OWNER_EMAIL && userRole!=='Owner'){
-          await memberRef.update({ role:'Owner', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-          userRole='Owner';
-        }
-      }
-      // policy boot
-      const polRef = teamRef.collection('settings').doc('policy');
-      const pSnap = await polRef.get();
-      if(!pSnap.exists) await polRef.set(DEFAULT_POLICY);
-    }
-    async function loadPolicy(){
-      const polRef = teamRef.collection('settings').doc('policy');
-      const pSnap = await polRef.get();
-      policy = { ...DEFAULT_POLICY, ...(pSnap.data()||{}) };
-    }
     function updateHeaderForUser(user){
       const avatar=$('#user-avatar'), dAva=$('#user-dropdown-avatar'), dName=$('#user-dropdown-name'), dEmail=$('#user-dropdown-email');
       const authBtn=$('#auth-btn'), t=authBtn?.querySelector('.nav-text'), i=authBtn?.querySelector('.material-symbols-outlined');
@@ -245,580 +238,609 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   
-    // ====== Seed Proyek ======
-    async function ensureProjectSeed(){
-      if(!currentUser) return;
-      const snap = await projectsCol.limit(1).get();
-      if(!snap.empty) return;
-      if(currentUser.email?.toLowerCase()===OWNER_EMAIL){
-        const id = projectsCol.doc().id;
-        await projectsCol.doc(id).set({
-          projectId:id, name:'Dapur Sehat', contractValue:1420000000, budget:{ total:1420000000 },
-          progressPct:0, createdBy:currentUser.uid,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        await envelopesCol.doc(id).set({
-          projectId:id, operationalBalance:0, contingencyBalance:0, profitLockBalance:0, overheadPoolBalance:0, sinkingFundBalance:0, journalCount:0,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        toast('success','Proyek "Dapur Sehat" dibuat.');
+    function setNotifDot(n){
+      const badge = $('.notification-badge'); if(!badge) return;
+      badge.classList.toggle('hidden', !(n>0));
+    }
+  
+    // ===== Auth: popup desktop, redirect mobile =====
+    async function signInWithGoogle(){
+      try{
+        $('#login-modal')?.classList.add('hidden'); lockScroll(false);
+        const provider = new firebase.auth.GoogleAuthProvider();
+        toast('loading','Menyambungkan akun…');
+        if(isMobileLike() || isIOS()){
+          await auth.signInWithRedirect(provider);
+          return;
+        }else{
+          await auth.signInWithPopup(provider);
+          toast('success','Login berhasil.');
+        }
+      }catch(e){
+        toast('error', e?.message || 'Login gagal.');
+        $('#login-modal')?.classList.remove('hidden'); lockScroll(true);
       }
     }
   
-    // ====== Planner & Payment (Fase 2 funcs disingkat) ======
-    function injectPlannerModal(){
-      if($('#alloc-modal')) return;
-      const div=document.createElement('div');
-      div.innerHTML=`
-        <div id="alloc-modal" class="modal-bg hidden">
-          <div class="modal-content" style="max-width:720px">
-            <div class="modal-header">
-              <h4>Allocation Planner — Termin Cair</h4>
-              <button class="icon-btn" onclick="document.getElementById('alloc-modal').classList.add('hidden')"><span class="material-symbols-outlined">close</span></button>
-            </div>
-            <div class="modal-body">
-              <div class="form-row"><label>Jumlah Termin Masuk</label><input type="number" id="ap-amount" placeholder="0"/></div>
-              <div class="form-row"><label>Tanggal Termin Berikut</label><input type="date" id="ap-nextdate"/></div>
-              <div class="helper">Saran otomatis; bisa kamu ubah sebelum simpan.</div>
-              <hr style="margin:12px 0;border:none;border-top:1px solid var(--line)" />
-              <div class="form-row"><label>Dana Cicilan</label><input type="number" id="ap-sinking"/></div>
-              <div class="form-row"><label>Dana s.d. Termin</label><input type="number" id="ap-need"/></div>
-              <div class="form-row"><label>Top-up Cadangan</label><input type="number" id="ap-cont-gap"/></div>
-              <div class="form-row"><label>Overhead</label><input type="number" id="ap-overhead"/></div>
-              <div class="form-row"><label>Laba Kunci</label><input type="number" id="ap-profitlock"/></div>
-              <div class="helper" id="ap-hints"></div>
-              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-                <button id="ap-rebalance" class="btn btn-secondary">Auto-Rebalance</button>
-                <button id="ap-save" class="btn btn-primary">Simpan Alokasi</button>
-              </div>
-            </div>
-          </div>
-        </div>`;
-      document.body.appendChild(div.firstElementChild);
-    }
-    function injectPaymentModal(){
-      if($('#pay-modal')) return;
-      const div=document.createElement('div');
-      div.innerHTML=`
-        <div id="pay-modal" class="modal-bg hidden">
-          <div class="modal-content" style="max-width:820px">
-            <div class="modal-header">
-              <h4>Payment Hub</h4>
-              <button class="icon-btn" onclick="document.getElementById('pay-modal').classList.add('hidden')"><span class="material-symbols-outlined">close</span></button>
-            </div>
-            <div class="modal-body" id="pay-modal-body"></div>
-          </div>
-        </div>`;
-      document.body.appendChild(div.firstElementChild);
-    }
+    auth.getRedirectResult()
+      .then((res)=>{ if(res && res.user){ toast('success','Login berhasil.'); $('#login-modal')?.classList.add('hidden'); lockScroll(false); }})
+      .catch((e)=>{ if(e && e.code) toast('error', e.message); });
   
-    // ====== Dashboard ======
-    async function renderDashboard(){
-      const zone = $('#page-dashboard .data-zone');
-      if(!zone){ /* noop */ }
-      if(!currentUser || userRole==='Pending'){ reflectGuestPlaceholder('dashboard'); return; }
+    auth.onAuthStateChanged(async (user)=>{
+      if(user){
+        currentUser = user;
+        await ensureMemberDoc(user);
+        updateHeaderForUser(user);
+        setConnectionDot(userRole==='Pending' ? 'yellow' : 'green');
+        // light dashboard
+        initDashboardLight();
   
-      const projSnap = await projectsCol.orderBy('createdAt','asc').limit(1).get();
-      if(projSnap.empty){ $('#envelope-cards').innerHTML=''; $('#dash-tables').innerHTML='<div class="card card-pad">Belum ada proyek.</div>'; return; }
-      const proj = projSnap.docs[0].data();
-      const envSnap = await envelopesCol.doc(proj.projectId).get();
-      const env = envSnap.data()||{};
-      const entriesTermin = await entriesCol.where('projectId','==',proj.projectId).where('source','==','Termin Proyek').get();
-      const terminCollected = entriesTermin.docs.reduce((s,d)=> s + Number(d.data().amount||0), 0);
-  
-      $('#chip-contract').textContent = `Kontrak: ${fmtIDR(proj.contractValue||0)}`;
-      $('#chip-progress').textContent = `Progres: ${(proj.progressPct??0)}%`;
-      $('#chip-mode').textContent = `Tanpa Utang: ${policy.noNewDebtMode?'ON':'OFF'}`;
-  
-      $('#envelope-cards').innerHTML = `
-        <div class="kpi-card"><h5>Operasional</h5><div class="amt">${fmtIDR(env.operationalBalance||0)}</div></div>
-        <div class="kpi-card"><h5>Cadangan</h5><div class="amt">${fmtIDR(env.contingencyBalance||0)}</div></div>
-        <div class="kpi-card"><h5>Laba Kunci</h5><div class="amt">${fmtIDR(env.profitLockBalance||0)}</div></div>
-        <div class="kpi-card"><h5>Overhead</h5><div class="amt">${fmtIDR(env.overheadPoolBalance||0)}</div></div>
-        <div class="kpi-card"><h5>Dana Cicilan</h5><div class="amt">${fmtIDR(env.sinkingFundBalance||0)}</div></div>
-        <div class="kpi-card"><h5>Termin Masuk</h5><div class="amt">${fmtIDR(terminCollected)}</div></div>
-      `;
-  
-      // aksi
-      $('#btn-termin')?.addEventListener('click',()=>openAllocationPlanner(proj.projectId));
-      $('#btn-payment-hub')?.addEventListener('click',()=>openPaymentHub(proj.projectId));
-  
-      await renderCashCharts(proj.projectId);
-      await renderDueTables(proj.projectId);
-    }
-  
-    async function renderCashCharts(projectId){
-      // cashflow 30 hari dari entries (in/out by date)
-      const now = new Date(); const start = new Date(); start.setDate(now.getDate()-29); start.setHours(0,0,0,0);
-      const entries = await entriesCol.where('projectId','==',projectId).get();
-      const byDay = new Map();
-      for(let i=0;i<30;i++){ const d=new Date(start); d.setDate(start.getDate()+i); byDay.set(d.toISOString().slice(0,10),0); }
-      entries.forEach(doc=>{
-        const x=doc.data(); const at=x.at?.toDate?.()||new Date(); const day=at.toISOString().slice(0,10);
-        if(!byDay.has(day)) return;
-        const val = (x.type==='in'?1:-1)*Number(x.amount||0);
-        byDay.set(day, byDay.get(day)+val);
-      });
-      const labels=[...byDay.keys()];
-      const values=[...byDay.values()];
-      const cfCtx = document.getElementById('cf30');
-      if(cfCtx){
-        new Chart(cfCtx,{type:'line',data:{labels,datasets:[{label:'Net (IDR)',data:values}]},options:{responsive:true,plugins:{legend:{display:false}}}});
-      }
-  
-      // kategori pengeluaran 30 hari dari entries->payables.category
-      const mapPay = new Map();
-      const payDocs = await payablesCol.where('projectId','==',projectId).get();
-      payDocs.forEach(d=>{ mapPay.set(d.id, (d.data().category||'lainnya')); });
-  
-      const spent = {};
-      entries.forEach(doc=>{
-        const x=doc.data(); if(x.type!=='out') return;
-        const at=x.at?.toDate?.()||new Date();
-        if(at < start) return;
-        const cat = mapPay.get(x.payableId)||'lainnya';
-        spent[cat] = (spent[cat]||0) + Number(x.amount||0);
-      });
-      const cats = Object.keys(spent); const vals = cats.map(c=>spent[c]);
-  
-      const catCtx = document.getElementById('cat30');
-      if(catCtx && cats.length){
-        new Chart(catCtx,{type:'bar',data:{labels:cats,datasets:[{label:'Pengeluaran',data:vals}]},options:{responsive:true,plugins:{legend:{display:false}}}});
-      }
-    }
-  
-    async function renderDueTables(projectId){
-      const now = new Date(); const seven=new Date(); seven.setDate(now.getDate()+7);
-      const sevenStr=seven.toISOString().slice(0,10);
-  
-      const paySnap = await payablesCol.where('projectId','==',projectId).where('status','in',['open','partial']).get();
-      const dueSoon=[]; const overdue=[];
-      paySnap.forEach(d=>{
-        const x=d.data(); const due=(x.dueDate||'').slice(0,10); const bal=Number(x.balance ?? x.amount ?? 0);
-        if(bal<=0 || !due) return;
-        if(due < todayStr()) overdue.push({id:d.id,...x});
-        else if(due <= sevenStr) dueSoon.push({id:d.id,...x});
-      });
-  
-      $('#dash-tables').innerHTML = `
-        <div class="section-head"><h4>Tagihan Mendesak (≤7 hari)</h4></div>
-        <div class="card card-pad">
-          <table class="table"><thead><tr><th>Jenis</th><th>Jatuh Tempo</th><th>Sisa</th><th></th></tr></thead>
-          <tbody>
-            ${dueSoon.map(x=>`
-              <tr>
-                <td>${x.category||'-'} — ${x.vendor||x.desc||'-'}</td>
-                <td>${(x.dueDate||'').slice(0,10)}</td>
-                <td>${fmtIDR(Number(x.balance ?? x.amount ?? 0))}</td>
-                <td><button class="btn btn-secondary" data-pay-id="${x.id}">Bayar</button></td>
-              </tr>
-            `).join('') || `<tr><td colspan="4">Tidak ada.</td></tr>`}
-          </tbody></table>
-        </div>
-  
-        <div class="section-head"><h4>Tagihan Terlambat</h4></div>
-        <div class="card card-pad">
-          <table class="table"><thead><tr><th>Jenis</th><th>Jatuh Tempo</th><th>Sisa</th><th></th></tr></thead>
-          <tbody>
-            ${overdue.map(x=>`
-              <tr>
-                <td>${x.category||'-'} — ${x.vendor||x.desc||'-'}</td>
-                <td class="text-danger">${(x.dueDate||'').slice(0,10)}</td>
-                <td>${fmtIDR(Number(x.balance ?? x.amount ?? 0))}</td>
-                <td><button class="btn btn-secondary" data-pay-id="${x.id}">Bayar</button></td>
-              </tr>
-            `).join('') || `<tr><td colspan="4">Tidak ada.</td></tr>`}
-          </tbody></table>
-        </div>
-      `;
-      $$('#dash-tables [data-pay-id]').forEach(btn=>{
-        btn.addEventListener('click', async ()=>{
-          const projId = (await projectsCol.orderBy('createdAt','asc').limit(1).get()).docs[0].id;
-          openPaymentHub(projId, btn.getAttribute('data-pay-id'));
-        });
-      });
-    }
-  
-    // ====== Planner (reuse Fase 2 core) ======
-    async function openAllocationPlanner(projectId){
-      guardAuthOrThrow();
-      const modal=$('#alloc-modal'); if(!modal) return;
-      const fields=['ap-amount','ap-nextdate','ap-sinking','ap-need','ap-cont-gap','ap-overhead','ap-profitlock'];
-      fields.forEach(id=>{ const el=/**@type {HTMLInputElement}*/(document.getElementById(id)); if(el) el.value='';});
-      $('#ap-hints').textContent='';
-  
-      const onRecalc = async ()=>{
-        const amountIn=asNum($('#ap-amount').value);
-        const nextDate=$('#ap-nextdate').value || todayStr();
-        if(!amountIn){ $('#ap-hints').textContent='Masukkan jumlah termin.'; return; }
-        const sug = await suggestAllocation(projectId, amountIn, nextDate);
-        $('#ap-sinking').value=String(Math.floor(sug.sinkingFund||0));
-        $('#ap-need').value=String(Math.floor(sug.needUntilNextTerm||0));
-        $('#ap-cont-gap').value=String(Math.floor(sug.contingencyTopUp||0));
-        $('#ap-overhead').value=String(Math.floor(sug.allowedOverhead||0));
-        const leftover = Math.max(0, amountIn - (asNum($('#ap-sinking').value)+asNum($('#ap-need').value)+asNum($('#ap-cont-gap').value)+asNum($('#ap-overhead').value)));
-        $('#ap-profitlock').value=String(leftover);
-        $('#ap-hints').innerHTML = `CRM: <b>${fmtIDR(sug.crm)}</b>, Allowed Overhead: <b>${fmtIDR(sug.allowedOverhead)}</b>`;
-      };
-      $('#ap-amount').oninput=onRecalc; $('#ap-nextdate').onchange=onRecalc; $('#ap-rebalance').onclick=onRecalc;
-  
-      $('#ap-save').onclick = async ()=>{
-        const amountIn=asNum($('#ap-amount').value);
-        const nextDate=$('#ap-nextdate').value || todayStr();
-        const alloc={ sinking:asNum($('#ap-sinking').value), need:asNum($('#ap-need').value), contGap:asNum($('#ap-cont-gap').value), overhead:asNum($('#ap-overhead').value), profitlock:asNum($('#ap-profitlock').value) };
-        const sum=alloc.sinking+alloc.need+alloc.contGap+alloc.overhead+alloc.profitlock;
-        if(sum!==amountIn) alloc.profitlock += (amountIn-sum);
-        const check = await simulateSafety(projectId, alloc, amountIn);
-        if(policy.noNewDebtMode && !check.safe){ toast('error','No-New-Debt Mode: alokasi belum aman.'); return; }
-        await saveAllocation(projectId, amountIn, nextDate, alloc);
-        toast('success','Alokasi tersimpan.');
-        $('#alloc-modal').classList.add('hidden'); renderDashboard();
-      };
-  
-      modal.classList.remove('hidden');
-    }
-    async function suggestAllocation(projectId, amountIn, nextDateStr){
-      const proj = (await projectsCol.doc(projectId).get()).data()||{};
-      const env  = (await envelopesCol.doc(projectId).get()).data()||{};
-      const terminSnap = await entriesCol.where('projectId','==',projectId).where('source','==','Termin Proyek').get();
-      const terminCollected = terminSnap.docs.reduce((s,d)=> s + Number(d.data().amount||0), 0) + Number(amountIn||0);
-      const outSnap = await entriesCol.where('projectId','==',projectId).where('type','==','out').get();
-      const actualOut = outSnap.docs.reduce((s,d)=> s + Number(d.data().amount||0), 0);
-  
-      const need = await sumPayablesDueBy(projectId, nextDateStr);
-      const buffer = Math.round((proj.contractValue||0)*(policy.bufferPct||0));
-      const needUntilNextTerm = need + buffer;
-  
-      const contTarget = Math.round((proj.contractValue||0)*(policy.contingencyTargetPct||0));
-      const contGap = Math.max(0, contTarget - Number(env.contingencyBalance||0));
-      const sinking = await sumLoanDueBy(projectId, nextDateStr);
-  
-      const crm = terminCollected - actualOut - needUntilNextTerm - contGap;
-      const prog = Number(proj.progressPct||0);
-      let gatePct = policy.gatingThresholds.lt70;
-      if(prog>=70 && prog<90) gatePct=policy.gatingThresholds.btw70_90;
-      else if(prog>=90) gatePct=policy.gatingThresholds.gt90;
-  
-      let allowedOverhead = Math.max(0, Math.floor(crm*gatePct));
-      allowedOverhead = Math.min(allowedOverhead, Math.max(0, amountIn - (sinking + needUntilNextTerm + contGap)));
-      const safe = (Number(env.operationalBalance||0) + (amountIn - (sinking + contGap + allowedOverhead))) >= needUntilNextTerm;
-      return { sinkingFund:sinking, needUntilNextTerm, contingencyTopUp:contGap, crm, allowedOverhead, safe };
-    }
-    async function simulateSafety(projectId, alloc, amountIn){
-      const env=(await envelopesCol.doc(projectId).get()).data()||{};
-      const projectedOperational = Number(env.operationalBalance||0) + (amountIn - (alloc.sinking + alloc.contGap + alloc.overhead + alloc.profitlock));
-      return { safe: projectedOperational >= alloc.need, projectedOperational };
-    }
-    async function saveAllocation(projectId, amountIn, nextDateStr, alloc){
-      const envRef=envelopesCol.doc(projectId);
-      const jrnlRef=envRef.collection('journal').doc();
-      const allocRef=allocationsCol.doc();
-      await db.runTransaction(async (tx)=>{
-        const env=(await tx.get(envRef)).data()||{};
-        const now=firebase.firestore.FieldValue.serverTimestamp();
-        tx.update(envRef,{
-          operationalBalance:Number(env.operationalBalance||0)+(amountIn-(alloc.sinking+alloc.contGap+alloc.overhead+alloc.profitlock)),
-          contingencyBalance:Number(env.contingencyBalance||0)+alloc.contGap,
-          profitLockBalance:Number(env.profitLockBalance||0)+alloc.profitlock,
-          overheadPoolBalance:Number(env.overheadPoolBalance||0)+alloc.overhead,
-          sinkingFundBalance:Number(env.sinkingFundBalance||0)+alloc.sinking,
-          journalCount:Number(env.journalCount||0)+1,updatedAt:now
-        });
-        tx.set(jrnlRef,{type:'termin_allocation_v2',amountIn,nextDate:nextDateStr,allocate:alloc,at:now,by:currentUser?.uid||''});
-        tx.set(allocRef,{projectId,amountIn,nextTermDate:nextDateStr,allocate:alloc,policySnapshot:policy,createdAt:now,by:currentUser?.uid||''});
-      });
-      await entriesCol.add({projectId,type:'in',source:'Termin Proyek',amount:Number(amountIn||0),at:firebase.firestore.FieldValue.serverTimestamp(),by:currentUser?.uid||''});
-    }
-    async function sumPayablesDueBy(projectId,dateStr){
-      const snap=await payablesCol.where('projectId','==',projectId).where('status','in',['open','partial']).get();
-      let sum=0; snap.forEach(d=>{const x=d.data(); const bal=Number(x.balance ?? x.amount ?? 0); const due=(x.dueDate||'').slice(0,10); if(bal>0 && due && due<=dateStr) sum+=bal;}); return sum;
-    }
-    async function sumLoanDueBy(projectId,dateStr){
-      const snap=await loansCol.where('projectId','==',projectId).get(); let sum=0;
-      snap.forEach(d=>{ const x=d.data(); const sched=Array.isArray(x.schedule)?x.schedule:[]; sched.forEach(s=>{const due=(s.dueDate||'').slice(0,10); if(due && due<=dateStr) sum += Number(s.amount||0)-Number(s.paid||0);});});
-      return sum;
-    }
-  
-    // ====== Payment Hub ======
-    async function openPaymentHub(projectId,focusPayableId){ guardAuthOrThrow(); await renderPaymentHub(projectId,focusPayableId); $('#pay-modal')?.classList.remove('hidden'); }
-    async function renderPaymentHub(projectId, focusPayableId){
-      const zoneModal=$('#pay-modal-body'); const zonePage=$('#page-tagihan .data-zone'); const zone=zoneModal||zonePage; if(!zone) return;
-      const snap=await payablesCol.where('projectId','==',projectId).where('status','in',['open','partial']).orderBy('dueDate','asc').get();
-      const rows=snap.docs.map(d=>{const x=d.data(); const bal=Number(x.balance ?? x.amount ?? 0);
-        return `<tr>
-          <td>${(x.category||'-').toUpperCase()} — ${x.vendor||x.desc||'-'}</td>
-          <td>${(x.dueDate||'').slice(0,10)}</td>
-          <td>${fmtIDR(bal)}</td>
-          <td style="display:flex;gap:6px">
-            <input type="number" min="0" max="${bal}" value="${bal}" data-pay-amt="${d.id}" style="width:140px;padding:6px;border:1px solid var(--line);border-radius:8px" />
-            <button class="btn btn-primary" data-pay-go="${d.id}">Bayar</button>
-          </td>
-        </tr>`;}).join('');
-      zone.innerHTML = `
-        <div class="section-head"><h4>Daftar Tagihan</h4></div>
-        <div class="card card-pad">
-          <table class="table">
-            <thead><tr><th>Tagihan</th><th>Jatuh Tempo</th><th>Sisa</th><th>Aksi</th></tr></thead>
-            <tbody>${rows || `<tr><td colspan="4">Tidak ada tagihan terbuka.</td></tr>`}</tbody>
-          </table>
-        </div>
-      `;
-      if(focusPayableId){ const el=zone.querySelector(`[data-pay-amt="${focusPayableId}"]`); el?.scrollIntoView({behavior:'smooth',block:'center'}); el?.classList.add('highlight'); setTimeout(()=>el?.classList.remove('highlight'),1200); }
-      $$('#pay-modal-body [data-pay-go], #page-tagihan [data-pay-go]').forEach(btn=>{
-        btn.addEventListener('click', async ()=>{
-          const id=btn.getAttribute('data-pay-go'); const inp=zone.querySelector(`[data-pay-amt="${id}"]`); const amt=asNum(inp?.value);
-          try{ await handlePay(projectId,id,amt); toast('success','Pembayaran tercatat.'); renderPaymentHub(projectId); renderDashboard(); }catch(e){ toast('error', e?.message||'Gagal membayar.'); }
-        });
-      });
-    }
-    async function handlePay(projectId, payableId, amount){
-      guardAuthOrThrow(); if(amount<=0) throw new Error('Nilai pembayaran tidak valid.');
-      const combo = await canProceedPayment({projectId,amount}); if(!combo.ok) throw new Error((combo.issues||[]).join(' '));
-      const payRef=payablesCol.doc(payableId); const envRef=envelopesCol.doc(projectId);
-      await db.runTransaction(async (tx)=>{
-        const paySnap=await tx.get(payRef); if(!paySnap.exists) throw new Error('Tagihan tidak ditemukan.');
-        const p=paySnap.data()||{}; const bal=Number(p.balance ?? p.amount ?? 0); if(bal<=0) throw new Error('Tagihan sudah lunas.');
-        const payAmt=Math.min(amount,bal);
-        const env=(await tx.get(envRef)).data()||{}; const oper=Number(env.operationalBalance||0); if(oper<payAmt) throw new Error('Saldo operasional tidak cukup.');
-        const now=firebase.firestore.FieldValue.serverTimestamp();
-        tx.update(envRef,{operationalBalance:oper-payAmt,updatedAt:now});
-        const newBal=bal-payAmt; tx.update(payRef,{balance:newBal,status:newBal<=0?'paid':'partial',updatedAt:now});
-        tx.set(entriesCol.doc(),{projectId,type:'out',source:'Pembayaran Tagihan',payableId,amount:payAmt,at:now,by:currentUser?.uid||''});
-      });
-    }
-    async function budgetGuard(projectId, amount){
-      const projSnap=await projectsCol.doc(projectId).get(); const budget=Number(projSnap.data()?.budget?.total||0);
-      const commSnap=await commitmentsCol.where('projectId','==',projectId).get();
-      const commitments=commSnap.docs.reduce((s,d)=>s+Number(d.data().amount||0),0);
-      const paidSnap=await payablesCol.where('projectId','==',projectId).where('status','in',['partial','paid']).get();
-      const actual=paidSnap.docs.reduce((s,d)=>s+(Number(d.data().amount||0)-Number(d.data().balance||0)),0);
-      const available=budget-commitments-actual;
-      return { ok:available>=amount, available, budget, commitments, actual };
-    }
-    async function envelopeGuard(projectId, amount){
-      const env=(await envelopesCol.doc(projectId).get()).data()||{}; const operational=Number(env.operationalBalance||0);
-      return { ok: operational>=amount, available:operational };
-    }
-    async function canProceedPayment({projectId,amount}){
-      const [bg,eg]=await Promise.all([budgetGuard(projectId,amount), envelopeGuard(projectId,amount)]);
-      const issues=[]; if(!bg.ok) issues.push(`Sisa anggaran tidak cukup (tersedia ${fmtIDR(bg.available)}).`);
-      if(!eg.ok) issues.push(`Saldo operasional tidak cukup.`);
-      return { ok: bg.ok && eg.ok, issues };
-    }
-    function guardAuthOrThrow(){ if(!currentUser) throw new Error('Harus login.'); if(userRole==='Pending') throw new Error('Akun menunggu persetujuan.'); }
-  
-    // ====== ABSENSI -> AKRUAL UPAH (baru) ======
-    async function renderAbsensiPage(){
-      const zone = $('#page-absensi .data-zone'); if(!zone) return;
-      if(!currentUser || userRole==='Pending'){ reflectGuestPlaceholder('absensi'); return; }
-  
-      // Pastikan ada proyek aktif
-      const projSnap = await projectsCol.orderBy('createdAt','asc').limit(1).get();
-      if(projSnap.empty){ zone.innerHTML = '<div class="card card-pad">Belum ada proyek.</div>'; return; }
-      const projectId = projSnap.docs[0].id;
-  
-      // Ambil daftar pekerja
-      const wkSnap = await workersCol.orderBy('name','asc').get();
-      const workers = wkSnap.docs.map(d=>({id:d.id, ...d.data()}));
-  
-      zone.innerHTML = `
-        <div class="section-head">
-          <h4>Absensi & Akrual Upah</h4>
-          <div class="chips"><span class="chip">${todayStr()}</span></div>
-        </div>
-        <div class="card card-pad">
-          <div class="absensi-grid" id="absensi-grid"></div>
-        </div>
-      `;
-  
-      const grid = $('#absensi-grid');
-      grid.innerHTML = workers.map(w=>`
-        <div class="worker-card" data-worker="${w.id}">
-          <h5>${w.name||'-'}</h5>
-          <div class="badge">Rate Harian: ${fmtIDR(Number(w.wage?.daily||0))}</div>
-          <div class="btn-group" style="margin-top:8px">
-            <button class="btn-xs" data-att="full">Hadir</button>
-            <button class="btn-xs" data-att="half">½ Hari</button>
-            <button class="btn-xs" data-att="absent">Absen</button>
-            <button class="btn-xs" data-att="ot">+ Lembur</button>
-          </div>
-        </div>
-      `).join('');
-  
-      // binding
-      $$('#absensi-grid .worker-card').forEach(card=>{
-        const wid = card.getAttribute('data-worker');
-        card.querySelectorAll('[data-att]').forEach(btn=>{
-          btn.addEventListener('click', async ()=>{
-            const type = btn.getAttribute('data-att');
-            try{
-              if(type==='ot'){
-                const jam = prompt('Jam lembur? (angka)'); const hours = Number(jam||0)||0; await markAttendanceAndAccrue(projectId, wid, 'overtime', {hours});
-              }else{
-                await markAttendanceAndAccrue(projectId, wid, type);
-              }
-              btn.classList.add('highlight'); setTimeout(()=>btn.classList.remove('highlight'),800);
-            }catch(e){ toast('error', e?.message||'Gagal mencatat absensi'); }
-          });
-        });
-      });
-    }
-  
-    async function markAttendanceAndAccrue(projectId, workerId, status, extra={}){
-      guardAuthOrThrow();
-      // 1) create attendance record
-      const today = todayStr();
-      const atRef = attendanceCol.doc(`${workerId}_${today}`);
-      const wk = (await workersCol.doc(workerId).get()).data()||{};
-      const rateDaily = Number(wk.wage?.daily||0);
-      const rateHalf  = Number(wk.wage?.half || Math.round(rateDaily*0.6));
-      const otPerHour = Number(wk.wage?.otPerHour || Math.round(rateDaily/8));
-  
-      let amount = 0;
-      if(status==='full') amount = rateDaily;
-      else if(status==='half') amount = rateHalf;
-      else if(status==='overtime') amount = (Number(extra.hours||0) * otPerHour);
-      else amount = 0;
-  
-      await atRef.set({
-        projectId, workerId, date: today, status, hours: Number(extra.hours||0) || 0,
-        amount, createdAt: firebase.firestore.FieldValue.serverTimestamp(), by: currentUser?.uid||''
-      });
-  
-      // 2) upsert payable "upah" minggu berjalan
-      if(amount>0){
-        await upsertWagePayable(projectId, workerId, amount);
-        toast('success','Absensi terekam & upah terakru.');
+        try{
+          const projSnap = await projectsCol.limit(1).get();
+          if(!projSnap.empty){
+            const pid = projSnap.docs[0].id;
+            const sub = await payablesCol.where('projectId','==',pid).where('status','==','submitted').get();
+            setNotifDot(sub.size);
+          }else setNotifDot(0);
+        }catch{ setNotifDot(0); }
       }else{
-        toast('success','Absensi terekam.');
+        currentUser = null; userRole = 'Guest';
+        updateHeaderForUser(null);
+        setConnectionDot('red');
+        setNotifDot(0);
+        const active = document.querySelector('.page.active')?.id?.replace('page-','') || 'dashboard';
+        reflectGuestPlaceholder(active);
+      }
+    });
+  
+    async function ensureMemberDoc(user){
+      const uid=user.uid;
+      const ref = membersCol.doc(uid);
+      const snap = await ref.get();
+      if(!snap.exists){
+        const role = (user.email||'').toLowerCase()===OWNER_EMAIL ? 'Owner' : 'Pending';
+        await ref.set({
+          uid, email:user.email||'', name:user.displayName||'', photoURL:user.photoURL||'',
+          role, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        userRole = role;
+        if(role!=='Pending') toast('success','Selamat, Anda tergabung sebagai '+role);
+      }else{
+        userRole = snap.data().role || 'Pending';
+        if((user.email||'').toLowerCase()===OWNER_EMAIL && userRole!=='Owner'){
+          await ref.update({ role:'Owner', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+          userRole='Owner';
+        }
       }
     }
   
-    async function upsertWagePayable(projectId, workerId, addAmount){
-      const wk = (await workersCol.doc(workerId).get()).data()||{};
-      const wkName = wk.name || 'Pekerja';
-      const wkRole = wk.role || 'Pekerja';
-      const wkPeriod = weekKey(new Date());
-      const [start,end] = wkPeriod.split('_');
+    // ===== Dashboard (ringan) =====
+    async function initDashboardLight(){
+      const cardZone = $('#envelope-cards'); if(!cardZone) return;
+      if(!currentUser || userRole==='Pending'){
+        cardZone.innerHTML = `
+          <div class="kpi-card skeleton"></div>
+          <div class="kpi-card skeleton"></div>
+          <div class="kpi-card skeleton"></div>`;
+        $('#chip-contract').textContent = 'Kontrak: -';
+        $('#chip-progress').textContent = 'Progres: -';
+        return;
+      }
+      const projSnap = await projectsCol.limit(1).get();
+      if(projSnap.empty){
+        $('#chip-contract').textContent = 'Kontrak: -';
+        $('#chip-progress').textContent = 'Progres: -';
+        cardZone.innerHTML = `<div class="card card-pad">Belum ada proyek.</div>`;
+        return;
+      }
+      const p = projSnap.docs[0].data(); const pid = projSnap.docs[0].id;
+      $('#chip-contract').textContent = `Kontrak: ${fmtIDR(p.contractValue||0)}`;
+      $('#chip-progress').textContent = `Progres: ${(p.progressPct??0)}%`;
   
-      // cari payable upah periode ini
+      const envSnap = await envelopesCol.doc(pid).get();
+      const e = envSnap.data()||{};
+      cardZone.innerHTML = `
+        <div class="kpi-card"><h5>Operasional</h5><div class="amt">${fmtIDR(e.operationalBalance||0)}</div></div>
+        <div class="kpi-card"><h5>Cadangan</h5><div class="amt">${fmtIDR(e.contingencyBalance||0)}</div></div>
+        <div class="kpi-card"><h5>Laba Kunci</h5><div class="amt">${fmtIDR(e.profitLockBalance||0)}</div></div>
+        <div class="kpi-card"><h5>Overhead</h5><div class="amt">${fmtIDR(e.overheadPoolBalance||0)}</div></div>
+        <div class="kpi-card"><h5>Cicilan</h5><div class="amt">${fmtIDR(e.sinkingFundBalance||0)}</div></div>
+      `;
+    }
+  
+    // ===== Payment Hub (Tagihan) =====
+    async function renderTagihanTable(){
+      const zone = $('#page-tagihan .data-zone'); if(!zone) return;
+      if(!currentUser || userRole==='Pending'){ reflectGuestPlaceholder('tagihan'); return; }
+  
+      zone.innerHTML = `
+        <div class="card card-pad">
+          <div class="section-head">
+            <h4>Tagihan</h4>
+            <div class="action-row">
+              <button class="btn btn-secondary" id="btn-export-payables">Export CSV (7 hari)</button>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="table" id="tbl-payables">
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Jenis</th>
+                  <th>Deskripsi</th>
+                  <th>Nilai</th>
+                  <th>Status</th>
+                  <th>Jatuh Tempo</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody><tr><td colspan="7">Memuat…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      $('#btn-export-payables')?.addEventListener('click', exportPayablesCSV);
+  
+      // ambil 7 hari belakang sebagai default
+      const since = new Date(); since.setDate(since.getDate() - 7);
+      const sinceStr = since.toISOString();
+  
       const snap = await payablesCol
-        .where('projectId','==',projectId)
-        .where('category','==','upah')
-        .where('workerId','==',workerId)
-        .where('period','==',wkPeriod)
-        .limit(1).get();
+        .where('createdAt','>=', new Date(sinceStr))
+        .orderBy('createdAt','desc')
+        .limit(200)
+        .get();
   
-      const due = new Date(end); due.setDate(due.getDate()+2);
-      const dueStr = due.toISOString().slice(0,10);
+      const rows = snap.docs.map(d=>{
+        const v = d.data();
+        return {
+          id:d.id,
+          date: (v.date||'').slice(0,10) || '-',
+          kind: v.kind || '-', // material | upah | cashloan | operasional | subkon
+          desc: v.desc || '-',
+          amt: v.amount || 0,
+          status: v.status || 'draft',
+          due: (v.dueDate||'').slice(0,10) || '-',
+          canAmend: ['draft','submitted','approved','overdue'].includes(v.status),
+          canPay: (v.status==='approved') || (userRole==='Owner' && v.status!=='paid' && v.status!=='void'),
+        };
+      });
   
-      if(snap.empty){
-        await payablesCol.add({
-          projectId,
-          category:'upah',
-          workerId,
-          vendor: wkName,
-          desc: `Upah ${wkRole} (${start}—${end})`,
-          amount: Number(addAmount||0),
-          balance: Number(addAmount||0),
-          status:'open',
-          dueDate: dueStr,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }else{
-        const ref=snap.docs[0].ref;
-        await db.runTransaction(async (tx)=>{
-          const cur=(await tx.get(ref)).data()||{};
-          const newAmt=Number(cur.amount||0)+Number(addAmount||0);
-          const newBal=Number(cur.balance||0)+Number(addAmount||0);
-          tx.update(ref,{amount:newAmt,balance:newBal,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-        });
-      }
+      const tbody = $('#tbl-payables tbody');
+      if(!rows.length){ tbody.innerHTML = `<tr><td colspan="7">Tidak ada tagihan 7 hari terakhir.</td></tr>`; return; }
+      tbody.innerHTML = rows.map(r=>{
+        const actions = (userRole==='Owner'||userRole==='Admin') ? `
+          <div class="actions">
+            ${r.canPay ? `<button class="btn btn-primary btn-xs" data-act="pay" data-id="${r.id}">Bayar</button>` : ''}
+            ${r.canAmend ? `<button class="btn btn-secondary btn-xs" data-act="amend" data-id="${r.id}">Amend</button>` : ''}
+            <button class="btn btn-ghost btn-xs" data-act="detail" data-id="${r.id}">Detail</button>
+            ${(userRole==='Owner' && r.status!=='paid') ? `<button class="btn btn-danger btn-xs" data-act="void" data-id="${r.id}">Void</button>` : ''}
+          </div>` : `<span class="text-muted">—</span>`;
+        return `
+          <tr>
+            <td>${r.date}</td>
+            <td>${r.kind}</td>
+            <td>${escapeHTML(r.desc)}</td>
+            <td>${fmtIDR(r.amt)}</td>
+            <td>${badgeStatus(r.status)}</td>
+            <td>${r.due}</td>
+            <td>${actions}</td>
+          </tr>`;
+      }).join('');
+  
+      // actions handler (delegasi)
+      tbody.addEventListener('click', async (e)=>{
+        const btn = e.target.closest('button[data-act]'); if(!btn) return;
+        const act = btn.getAttribute('data-act'); const id = btn.getAttribute('data-id');
+        if(act==='pay') openPayModal(id);
+        if(act==='amend') openAmendModal(id);
+        if(act==='void') voidPayable(id);
+        if(act==='detail') showPayableDetail(id);
+      });
     }
   
-    // ====== PENGATURAN: Loan Engine (form sederhana) ======
-    async function renderPengaturanPage(){
+    function badgeStatus(s){
+      const map = {
+        draft:'badge gray', submitted:'badge blue', approved:'badge green',
+        overdue:'badge orange', paid:'badge solid', void:'badge red'
+      };
+      const cls = map[s] || 'badge gray';
+      return `<span class="${cls}">${s}</span>`;
+    }
+  
+    function escapeHTML(str){
+      return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+    }
+  
+    function createModal(html){
+      const wrap = document.createElement('div');
+      wrap.className = 'modal-bg';
+      wrap.innerHTML = `<div class="modal-content">${html}</div>`;
+      document.body.appendChild(wrap);
+      lockScroll(true);
+      return wrap;
+    }
+  
+    async function openPayModal(payableId){
+      // get payable
+      const doc = await payablesCol.doc(payableId).get();
+      if(!doc.exists){ toast('error','Tagihan tidak ditemukan'); return; }
+      const v = doc.data();
+      if(!(userRole==='Owner' || userRole==='Admin')){ toast('error','Tidak berwenang'); return; }
+      if(v.status==='paid'){ toast('error','Sudah dibayar'); return; }
+  
+      const modal = createModal(`
+        <div class="modal-header">
+          <h4>Bayar Tagihan</h4>
+          <button class="icon-btn" data-close><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Deskripsi</label>
+              <input type="text" value="${escapeHTML(v.desc||'')}" disabled>
+            </div>
+            <div class="form-group">
+              <label>Nilai</label>
+              <input type="text" value="${fmtIDR(v.amount||0)}" disabled>
+            </div>
+            <div class="form-group">
+              <label>Sumber Dana</label>
+              <select id="pay-source">
+                <option value="operational">Operasional</option>
+                <option value="overheadPool">Overhead</option>
+                <option value="sinkingFund">Sinking (cicilan pinjaman)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Tanggal Bayar</label>
+              <input id="pay-date" type="date" value="${todayStr()}">
+            </div>
+            <div class="form-group full">
+              <label>Catatan</label>
+              <textarea id="pay-note" rows="3" placeholder="Opsional"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-close>Tutup</button>
+          <button class="btn btn-primary" id="btn-confirm-pay" data-id="${doc.id}">Konfirmasi Bayar</button>
+        </div>
+      `);
+  
+      modal.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{ modal.remove(); lockScroll(false); }));
+      $('#btn-confirm-pay')?.addEventListener('click', async ()=>{
+        const source = /** @type {HTMLSelectElement} */(modal.querySelector('#pay-source'))?.value || 'operational';
+        const date = /** @type {HTMLInputElement} */(modal.querySelector('#pay-date'))?.value || todayStr();
+        const note = /** @type {HTMLTextAreaElement} */(modal.querySelector('#pay-note'))?.value || '';
+        modal.remove(); lockScroll(false);
+        await confirmPayablePayment(doc.id, source, date, note);
+        await renderTagihanTable();
+      });
+    }
+  
+    async function confirmPayablePayment(id, sourceKey, paidDate, note){
+      toast('loading','Memproses pembayaran...');
+      const docRef = payablesCol.doc(id);
+      await db.runTransaction(async (tx)=>{
+        const pSnap = await tx.get(docRef);
+        if(!pSnap.exists) throw new Error('Tagihan hilang');
+        const p = pSnap.data();
+        if(p.status==='paid') throw new Error('Sudah dibayar');
+  
+        // Update status
+        tx.update(docRef, {
+          status: 'paid',
+          paidAt: new Date(paidDate),
+          paidBy: (currentUser?.email||''),
+          paidNote: note || '',
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+  
+        // Buat jurnal entri
+        const entry = {
+          type:'payment',
+          payableId: id,
+          amount: p.amount||0,
+          source: sourceKey,    // operational | overheadPool | sinkingFund
+          at: new Date(paidDate),
+          by: (currentUser?.email||''),
+          note: note||'',
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        tx.set(entriesCol.doc(), entry);
+  
+        // Kurangi saldo envelope terkait
+        const projSnap = await projectsCol.limit(1).get();
+        if(!projSnap.empty){
+          const envRef = envelopesCol.doc(projSnap.docs[0].id);
+          const envSnap = await tx.get(envRef);
+          const env = envSnap.exists ? envSnap.data() : {};
+          const keyMap = { operational:'operationalBalance', overheadPool:'overheadPoolBalance', sinkingFund:'sinkingFundBalance' };
+          const balKey = keyMap[sourceKey] || 'operationalBalance';
+          const cur = Number(env?.[balKey] || 0);
+          const next = Math.max(0, cur - Number(p.amount||0));
+          tx.set(envRef, { [balKey]: next, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+        }
+      });
+      toast('success','Pembayaran berhasil.');
+    }
+  
+    async function openAmendModal(payableId){
+      const doc = await payablesCol.doc(payableId).get();
+      if(!doc.exists){ toast('error','Tagihan tidak ditemukan'); return; }
+      const v = doc.data();
+      if(!(userRole==='Owner' || userRole==='Admin')){ toast('error','Tidak berwenang'); return; }
+      if(v.status==='paid'){ toast('error','Tidak dapat amend tagihan yang sudah dibayar'); return; }
+  
+      const modal = createModal(`
+        <div class="modal-header">
+          <h4>Amend Tagihan</h4>
+          <button class="icon-btn" data-close><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group full">
+              <label>Deskripsi</label>
+              <input id="am-desc" type="text" value="${escapeHTML(v.desc||'')}" />
+            </div>
+            <div class="form-group">
+              <label>Nilai</label>
+              <input id="am-amt" type="number" min="0" value="${Number(v.amount||0)}" />
+            </div>
+            <div class="form-group">
+              <label>Jatuh Tempo</label>
+              <input id="am-due" type="date" value="${(v.dueDate||'').slice(0,10)}" />
+            </div>
+            <div class="form-group full">
+              <label>Alasan</label>
+              <textarea id="am-reason" rows="3" placeholder="Wajib diisi"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-close>Tutup</button>
+          <button class="btn btn-primary" id="btn-confirm-amend" data-id="${doc.id}">Simpan Perubahan</button>
+        </div>
+      `);
+      modal.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{ modal.remove(); lockScroll(false); }));
+      $('#btn-confirm-amend')?.addEventListener('click', async ()=>{
+        const desc = /** @type {HTMLInputElement} */(modal.querySelector('#am-desc'))?.value || '';
+        const amt  = asNum(/** @type {HTMLInputElement} */(modal.querySelector('#am-amt'))?.value);
+        const due  = /** @type {HTMLInputElement} */(modal.querySelector('#am-due'))?.value || '';
+        const rsn  = /** @type {HTMLTextAreaElement} */(modal.querySelector('#am-reason'))?.value || '';
+        if(!rsn.trim()){ toast('error','Alasan wajib diisi'); return; }
+        modal.remove(); lockScroll(false);
+        await confirmAmendPayable(doc.id, {desc, amount:amt, dueDate:due? new Date(due): null, reason:rsn});
+        await renderTagihanTable();
+      });
+    }
+  
+    async function confirmAmendPayable(id, payload){
+      toast('loading','Menyimpan perubahan…');
+      const docRef = payablesCol.doc(id);
+      await db.runTransaction(async (tx)=>{
+        const snap = await tx.get(docRef);
+        if(!snap.exists) throw new Error('Tagihan hilang');
+        const before = snap.data();
+        if(before.status==='paid') throw new Error('Tidak bisa amend yang sudah dibayar');
+  
+        // catat amendment
+        const amendRef = docRef.collection('amendments').doc();
+        tx.set(amendRef, {
+          before: { desc:before.desc||'', amount:before.amount||0, dueDate: before.dueDate||null },
+          after: { desc: payload.desc, amount: payload.amount, dueDate: payload.dueDate||null },
+          reason: payload.reason || '',
+          by: (currentUser?.email||''),
+          at: firebase.firestore.FieldValue.serverTimestamp()
+        });
+  
+        // update nilai utama
+        const up = {
+          desc: payload.desc,
+          amount: payload.amount,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        if(payload.dueDate) up['dueDate'] = payload.dueDate;
+        tx.update(docRef, up);
+      });
+      toast('success','Perubahan disimpan.');
+    }
+  
+    async function voidPayable(id){
+      if(!(userRole==='Owner')){ toast('error','Hanya Owner yang dapat void'); return; }
+      if(!confirm('Void tagihan ini?')) return;
+      await payablesCol.doc(id).update({ status:'void', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      toast('success','Tagihan di-void.');
+      await renderTagihanTable();
+    }
+  
+    async function showPayableDetail(id){
+      const doc = await payablesCol.doc(id).get();
+      if(!doc.exists){ toast('error','Tagihan tidak ditemukan'); return; }
+      const v = doc.data();
+      const modal = createModal(`
+        <div class="modal-header">
+          <h4>Detail Tagihan</h4>
+          <button class="icon-btn" data-close><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-grid">
+            <div><strong>Deskripsi</strong><div>${escapeHTML(v.desc||'-')}</div></div>
+            <div><strong>Jenis</strong><div>${v.kind||'-'}</div></div>
+            <div><strong>Nilai</strong><div>${fmtIDR(v.amount||0)}</div></div>
+            <div><strong>Status</strong><div>${v.status||'-'}</div></div>
+            <div><strong>Jatuh Tempo</strong><div>${(v.dueDate||'').slice(0,10)||'-'}</div></div>
+            <div><strong>Dibuat</strong><div>${(v.createdAt?.toDate?.()||v.createdAt||'').toString().slice(0,24)}</div></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-close>Tutup</button>
+        </div>
+      `);
+      modal.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>{ modal.remove(); lockScroll(false); }));
+    }
+  
+    // ===== Approval Center (Pengaturan) =====
+    async function renderApprovalCenter(){
       const zone = $('#page-pengaturan .data-zone'); if(!zone) return;
       if(!currentUser || userRole==='Pending'){ reflectGuestPlaceholder('pengaturan'); return; }
   
-      // Proyek aktif
-      const projSnap = await projectsCol.orderBy('createdAt','asc').limit(1).get();
-      if(projSnap.empty){ zone.innerHTML = '<div class="card card-pad">Belum ada proyek.</div>'; return; }
-      const projectId = projSnap.docs[0].id;
-  
       zone.innerHTML = `
-        <div class="section-head"><h4>Pengaturan Tim & Pembiayaan</h4></div>
-  
-        <div class="card card-pad" style="margin-bottom:12px">
-          <h4 style="margin:0 0 8px 0">Tambah Pinjaman (Loan)</h4>
-          <div class="form-row"><label>Nama Lender</label><input id="loan-lender" placeholder="PT Dana Mitra"/></div>
-          <div class="form-row"><label>Pokok Pinjaman</label><input id="loan-principal" type="number" placeholder="0"/></div>
-          <div class="form-row"><label>Bunga % per tahun</label><input id="loan-rate" type="number" step="0.01" placeholder="12"/></div>
-          <div class="form-row"><label>Tenor (bulan)</label><input id="loan-tenor" type="number" placeholder="6"/></div>
-          <div class="form-row"><label>Tanggal Mulai</label><input id="loan-start" type="date" value="${todayStr()}"/></div>
-          <div class="helper">Skema: amortisasi bulanan (angsuran tetap). Jadwal cicilan akan dibuat otomatis.</div>
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-            <button class="btn btn-primary" id="loan-create">Buat Loan</button>
-          </div>
-        </div>
-  
         <div class="card card-pad">
-          <h4 style="margin:0 0 8px 0">Daftar Loan</h4>
-          <div id="loan-list"></div>
+          <div class="section-head">
+            <h4>Approval Center</h4>
+          </div>
+          <div class="table-container">
+            <table class="table" id="tbl-approvals">
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Jenis</th>
+                  <th>Target</th>
+                  <th>Perubahan</th>
+                  <th>Pemohon</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody><tr><td colspan="7">Memuat…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       `;
   
-      $('#loan-create')?.addEventListener('click', async ()=>{
-        try{
-          const lender=$('#loan-lender').value?.trim()||'Lender';
-          const principal=asNum($('#loan-principal').value);
-          const rate=Number($('#loan-rate').value||0)/100;
-          const tenor=Number($('#loan-tenor').value||0);
-          const start=$('#loan-start').value||todayStr();
-          if(principal<=0 || tenor<=0) { toast('error','Pokok/tenor tidak valid.'); return; }
-          await createLoan(projectId,{lender,principal,rate,tenor,startDate:start});
-          toast('success','Loan dibuat.');
-          renderPengaturanPage();
-        }catch(e){ toast('error', e?.message||'Gagal membuat loan'); }
+      const snap = await changeRequestsCol
+        .orderBy('createdAt','desc')
+        .limit(100)
+        .get();
+  
+      const rows = snap.docs.map(d=>{
+        const v = d.data();
+        const diff = v.changeType==='worker_rate'
+          ? `Rate: ${fmtIDR(v.current||0)} → ${fmtIDR(v.proposed||0)}`
+          : (v.summary || '-');
+        return {
+          id:d.id,
+          date: (v.createdAt?.toDate?.()?.toISOString()?.slice(0,10)) || '-',
+          type: v.changeType || '-',
+          target: v.targetName || v.workerName || v.targetId || '-',
+          diff,
+          requester: v.requestedBy || '-',
+          status: v.status || 'pending'
+        };
       });
   
-      // list loans
-      const ls = await loansCol.where('projectId','==',projectId).get();
-      $('#loan-list').innerHTML = ls.docs.map(d=>{
-        const x=d.data(); const total=x.schedule?.reduce((s,v)=>s+Number(v.amount||0),0)||0;
-        return `<div class="card card-pad" style="margin:8px 0">
-          <div><strong>${x.lender}</strong> — Pokok ${fmtIDR(x.principal)} | ${x.rate*100}% p.a. | Tenor ${x.tenor} bln</div>
-          <div>Total jadwal: ${fmtIDR(total)}</div>
-        </div>`;
-      }).join('') || 'Belum ada.';
-    }
+      const tbody = $('#tbl-approvals tbody');
+      if(!rows.length){ tbody.innerHTML = `<tr><td colspan="7">Tidak ada permintaan.</td></tr>`; return; }
   
-    async function createLoan(projectId,{lender,principal,rate,tenor,startDate}){
-      // amortisasi (angsuran tetap)
-      const i = rate/12;
-      const n = tenor;
-      const A = i===0 ? (principal/n) : (principal * (i*Math.pow(1+i,n)) / (Math.pow(1+i,n)-1));
-      const schedule=[];
-      let balance=principal; let cur=new Date(startDate+'T00:00:00');
-      for(let k=1;k<=n;k++){
-        const interest = balance * i;
-        const principalPay = A - interest;
-        balance = Math.max(0, balance - principalPay);
-        const due = new Date(cur); due.setMonth(cur.getMonth() + (k-1));
-        schedule.push({ idx:k, dueDate: due.toISOString().slice(0,10), amount: Math.round(A), paid: 0 });
-      }
-      await loansCol.add({
-        projectId, lender, principal:Math.round(principal), rate, tenor,
-        startDate, schedule,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      tbody.innerHTML = rows.map(r=>{
+        const actions = (userRole==='Owner'||userRole==='Admin') && r.status==='pending'
+          ? `<div class="actions">
+              <button class="btn btn-primary btn-xs" data-act="approve" data-id="${r.id}">Approve</button>
+              <button class="btn btn-danger btn-xs" data-act="reject" data-id="${r.id}">Reject</button>
+             </div>`
+          : `<span class="text-muted">—</span>`;
+        const badge = r.status==='pending' ? 'badge blue' : r.status==='approved' ? 'badge green' : 'badge red';
+        return `
+          <tr>
+            <td>${r.date}</td>
+            <td>${r.type}</td>
+            <td>${escapeHTML(r.target)}</td>
+            <td>${escapeHTML(r.diff)}</td>
+            <td>${escapeHTML(r.requester)}</td>
+            <td><span class="${badge}">${r.status}</span></td>
+            <td>${actions}</td>
+          </tr>`;
+      }).join('');
+  
+      tbody.addEventListener('click', async (e)=>{
+        const btn = e.target.closest('button[data-act]'); if(!btn) return;
+        const act = btn.getAttribute('data-act'); const id = btn.getAttribute('data-id');
+        if(act==='approve') await actOnChangeRequest(id, true);
+        if(act==='reject') await actOnChangeRequest(id, false);
+        await renderApprovalCenter();
       });
     }
   
-    // ====== Expose (opsional) ======
-    window.PKP = { openAllocationPlanner, renderPaymentHub, handlePay };
+    async function actOnChangeRequest(id, approve){
+      if(!(userRole==='Owner'||userRole==='Admin')){ toast('error','Tidak berwenang'); return; }
+      toast('loading', approve? 'Menyetujui…':'Menolak…');
+      await db.runTransaction(async (tx)=>{
+        const ref = changeRequestsCol.doc(id);
+        const snap = await tx.get(ref);
+        if(!snap.exists) throw new Error('Request tidak ditemukan');
+        const v = snap.data();
+        if(v.status!=='pending') throw new Error('Sudah diproses');
+  
+        // apply if approve
+        if(approve && v.changeType==='worker_rate' && v.workerId){
+          const wRef = workersCol.doc(v.workerId);
+          tx.update(wRef, { rate: Number(v.proposed||0), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+  
+        tx.update(ref, {
+          status: approve? 'approved':'rejected',
+          decidedBy: (currentUser?.email||''),
+          decidedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      toast('success', approve? 'Disetujui.':'Ditolak.');
+    }
+  
+    // ===== Export CSV =====
+    async function exportPayablesCSV(){
+      if(!currentUser || userRole==='Pending'){ toast('error','Login dulu'); return; }
+      const since = new Date(); since.setDate(since.getDate() - 7);
+      const snap = await payablesCol.where('createdAt','>=', since).orderBy('createdAt','desc').get();
+      const header = ['id','date','kind','desc','amount','status','dueDate'];
+      const rows = snap.docs.map(d=>{
+        const v = d.data();
+        return [
+          d.id,
+          (v.date||'').slice(0,10),
+          v.kind||'',
+          (v.desc||'').replace(/\n/g,' '),
+          Number(v.amount||0),
+          v.status||'',
+          (v.dueDate||'').slice ? (v.dueDate||'').slice(0,10) : (v.dueDate?.toDate?.()?.toISOString()?.slice(0,10) || '')
+        ];
+      });
+      downloadCSV('payables_7d.csv', [header, ...rows]);
+    }
+  
+    async function exportDashboardSnapshot(){
+      if(!currentUser || userRole==='Pending'){ toast('error','Login dulu'); return; }
+      const projSnap = await projectsCol.limit(1).get();
+      if(projSnap.empty){ toast('error','Belum ada proyek'); return; }
+      const p = projSnap.docs[0].data(); const pid = projSnap.docs[0].id;
+      const envSnap = await envelopesCol.doc(pid).get(); const e = envSnap.data()||{};
+      const header = ['contractValue','progressPct','operational','contingency','profitLock','overheadPool','sinkingFund'];
+      const row = [
+        Number(p.contractValue||0),
+        Number(p.progressPct||0),
+        Number(e.operationalBalance||0),
+        Number(e.contingencyBalance||0),
+        Number(e.profitLockBalance||0),
+        Number(e.overheadPoolBalance||0),
+        Number(e.sinkingFundBalance||0),
+      ];
+      downloadCSV('dashboard_snapshot.csv', [header, row]);
+    }
+  
+    function downloadCSV(filename, rows){
+      const csv = rows.map(r=>r.map(cell=>{
+        const s = (cell===null||cell===undefined) ? '' : String(cell);
+        if(/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+        return s;
+      }).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
   
   });
   
