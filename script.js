@@ -49,6 +49,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const isMobileLike = () => /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
     const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
     const sleep = (ms)=> new Promise(r=>setTimeout(r,ms));
+
+    function applyRoleVisibility() {
+        // 1) Tandai body untuk styling kondisional
+        document.body.dataset.role = userRole; // e.g. data-role="Owner"
+      
+        // 2) Show/hide item yang punya data-role (jika kamu masih pakai gate di sidebar)
+        document.querySelectorAll('[data-role]').forEach(el => {
+          const roles = String(el.getAttribute('data-role') || '')
+            .split(',').map(s => s.trim());
+          el.style.display = (roles.includes(userRole) || userRole === 'Owner') ? '' : 'none';
+        });
+      
+        // 3) Placeholder konten hanya jika Guest/Pending
+        const active = document.querySelector('.page.active')?.id?.replace('page-','') || 'dashboard';
+        if (!currentUser || userRole === 'Pending') {
+          reflectGuestPlaceholder(active);
+        } else {
+          const zone = document.querySelector(`#page-${active} .data-zone`);
+          if (zone && zone.firstElementChild?.classList.contains('placeholder-card')) {
+            zone.innerHTML = ''; // kosongkan placeholder
+          }
+        }
+      
+        // 4) Perbarui tombol login/keluar di footer sidebar
+        const authBtn = document.getElementById('auth-btn');
+        if (authBtn) {
+          const textSpan = authBtn.querySelector('.nav-text');
+          const iconSpan = authBtn.querySelector('.material-symbols-outlined');
+          if (currentUser) {
+            textSpan && (textSpan.textContent = 'Keluar');
+            iconSpan && (iconSpan.textContent = 'logout');
+            authBtn.classList.add('danger');
+          } else {
+            textSpan && (textSpan.textContent = 'Login');
+            iconSpan && (iconSpan.textContent = 'login');
+            authBtn.classList.remove('danger');
+          }
+        }
+      }
+      
   
     // Toast
     let popupTimeout;
@@ -314,54 +354,66 @@ function mapAuthError(e){
   return e?.message || 'Login gagal.';
 }
   
-    auth.onAuthStateChanged(async (user)=>{
-      if(user){
-        currentUser = user;
-        await ensureMemberDoc(user);
-        updateHeaderForUser(user);
-        setConnectionDot(userRole==='Pending' ? 'yellow' : 'green');
-        // light dashboard
-        initDashboardLight();
+auth.onAuthStateChanged(async (user) => {
+    // bersihkan listener lama
+    if (roleUnsub) { roleUnsub(); roleUnsub = null; }
   
-        try{
+    if (user) {
+      currentUser = user;
+  
+      // pastikan dokumen member ada & Owner auto-override
+      await ensureMemberDoc(user);
+  
+      // DENGAR perubahan role realtime
+      roleUnsub = membersCol.doc(user.uid).onSnapshot(async (snap) => {
+        const data = snap.data() || {};
+        userRole = data.role || 'Pending';
+  
+        // kalau email = OWNER_EMAIL tapi role belum 'Owner', paksa jadi Owner
+        if ((user.email || '').toLowerCase() === OWNER_EMAIL && userRole !== 'Owner') {
+          await membersCol.doc(user.uid).update({
+            role: 'Owner',
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          userRole = 'Owner';
+        }
+  
+        // Perbarui header + indikator
+        updateHeaderForUser(user);
+        setConnectionDot(userRole === 'Pending' ? 'yellow' : 'green');
+  
+        // Terapkan visibilitas sesuai role + hentikan placeholder
+        applyRoleVisibility();
+  
+        // Render hal aktif kalau perlu
+        const active = document.querySelector('.page.active')?.id?.replace('page-', '') || 'dashboard';
+        renderIfNeeded(active);
+  
+        // Notif jumlah approval/tagihan (opsional)
+        try {
           const projSnap = await projectsCol.limit(1).get();
-          if(!projSnap.empty){
+          if (!projSnap.empty) {
             const pid = projSnap.docs[0].id;
             const sub = await payablesCol.where('projectId','==',pid).where('status','==','submitted').get();
             setNotifDot(sub.size);
-          }else setNotifDot(0);
-        }catch{ setNotifDot(0); }
-      }else{
-        currentUser = null; userRole = 'Guest';
-        updateHeaderForUser(null);
-        setConnectionDot('red');
-        setNotifDot(0);
-        const active = document.querySelector('.page.active')?.id?.replace('page-','') || 'dashboard';
-        reflectGuestPlaceholder(active);
-      }
-    });
+          } else setNotifDot(0);
+        } catch { setNotifDot(0); }
+      }, (err) => {
+        console.warn('role listener error:', err);
+        setConnectionDot('yellow');
+      });
   
-    async function ensureMemberDoc(user){
-      const uid=user.uid;
-      const ref = membersCol.doc(uid);
-      const snap = await ref.get();
-      if(!snap.exists){
-        const role = (user.email||'').toLowerCase()===OWNER_EMAIL ? 'Owner' : 'Pending';
-        await ref.set({
-          uid, email:user.email||'', name:user.displayName||'', photoURL:user.photoURL||'',
-          role, createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        userRole = role;
-        if(role!=='Pending') toast('success','Selamat, Anda tergabung sebagai '+role);
-      }else{
-        userRole = snap.data().role || 'Pending';
-        if((user.email||'').toLowerCase()===OWNER_EMAIL && userRole!=='Owner'){
-          await ref.update({ role:'Owner', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-          userRole='Owner';
-        }
-      }
+    } else {
+      // SIGNED OUT
+      currentUser = null;
+      userRole = 'Guest';
+      updateHeaderForUser(null);
+      setConnectionDot('red');
+      setNotifDot(0);
+      applyRoleVisibility();
     }
-  
+  });
+    
     // ===== Dashboard (ringan) =====
     async function initDashboardLight(){
       const cardZone = $('#envelope-cards'); if(!cardZone) return;
@@ -892,3 +944,4 @@ function mapAuthError(e){
   
   });
   
+  let roleUnsub = null; // listener Firestore untuk role

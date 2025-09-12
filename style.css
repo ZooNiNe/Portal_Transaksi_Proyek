@@ -248,3 +248,12 @@ body.dark-theme .google-btn.w-full {
 @media (max-width: 420px) {
   #login-modal .modal-content { margin: 0 12px; }
 }
+
+/* Mobile-first tweaks */
+.icon-btn { padding: .6rem; }
+.nav-item { padding: .7rem .8rem; }
+#login-modal.modal-bg { z-index: 1200; }
+#login-modal .modal-content { max-width: 520px; border-radius: 16px; }
+@media (max-width: 420px) {
+  #login-modal .modal-content { margin: 0 12px; }
+}
