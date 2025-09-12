@@ -245,7 +245,7 @@ body.dark-theme .kpi p { color: var(--text-secondary-dark); }
 .chart-container { padding: 1rem; position: relative; height: 250px; }
 
 /* ===== 6. Forms & Inputs ===== */
-/* (tetap) */
+/* (tetap; tambah sesuai kebutuhan form) */
 
 /* ===== 7. Buttons ===== */
 .btn {
@@ -452,14 +452,30 @@ body.is-guest [data-nav="pengaturan"],
 body.is-guest .action-btn,
 body.is-guest .card-header-actions { display: none !important; }
 
-/* (Opsional) Pending: sembunyikan nav berat selain dashboard & monitoring — JS tetap jadi sumber kebenaran */
+/* Pending (opsional, JS tetap sumber kebenaran) */
 body.is-pending [data-nav="input-data"],
 body.is-pending [data-nav="stok-material"],
 body.is-pending [data-nav="tagihan"],
 body.is-pending [data-nav="absensi"],
 body.is-pending [data-nav="pengaturan"] { display: none !important; }
 
-/* ===== 14. Utilities & Animations ===== */
+/* ===== 14. Connection Status ===== */
+.connection-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border: 1px solid var(--border-light);
+  border-radius: 999px; background: var(--bg-content-light);
+  color: var(--text-primary-light);
+}
+body.dark-theme .connection-status {
+  background: var(--bg-content-dark); border-color: var(--border-dark);
+  color: var(--text-primary-dark);
+}
+.connection-status .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; }
+.connection-status.connected .status-dot { background: #22c55e; }
+.connection-status.pending .status-dot { background: #f59e0b; }
+.connection-status.guest .status-dot { background: #ef4444; }
+
+/* ===== 15. Utilities & Animations ===== */
 .w-full { width: 100%; }
 .spinner { width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 1s ease-in-out infinite; }
 .popup-container .spinner { border-top-color: #fff; }
@@ -475,7 +491,7 @@ body.dark-theme .skeleton { background-color: var(--bg-content-dark); }
 @keyframes pulse { 50% { opacity: .5; } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* ===== 15. Desktop & Tablet Enhancements ===== */
+/* ===== 16. Desktop & Tablet Enhancements ===== */
 @media (min-width: 768px) {
   .page-container { padding: 1.5rem; }
   .main-header { padding: 0.75rem 1.5rem; }

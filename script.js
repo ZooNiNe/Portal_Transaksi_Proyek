@@ -1,7 +1,6 @@
 // @ts-check
 /* =======================================================
- * PKP Frontend v5.2 - Final Build (Firebase Architecture)
- * (Client Script - Full Revised)
+ * PKP Frontend v5.3 - Final Revised (Firebase v8)
  * ======================================================= */
 
 /**
@@ -36,8 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let dashboardChart = null;
   /** @type {firebase.User|null} */
   let currentUser = null;
-  /** @type {string} */
-  let userRole = 'Guest'; // sumber kebenaran: custom claims; fallback: Firestore
+  /** @type {"Guest"|"Pending"|"User"|"Admin"|"Owner"} */
+  let userRole = 'Guest';
   /** @type {Array<() => void>} */
   let listeners = [];
 
@@ -60,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(popupTimeout);
     const p = $('#popup-container');
     if (!p) return;
-    p.className = 'popup-container show popup-' + kind;
+    p.className = 'popup-container show popup-' + kind; // popup-success | popup-error | popup-loading
     const iconEl = $('#popup-icon');
     const messageEl = $('#popup-message');
     if (iconEl && messageEl) {
@@ -71,6 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (kind !== 'loading') {
       popupTimeout = setTimeout(() => p.classList.remove('show'), 4000);
     }
+  }
+
+  function setConnectionStatus(kind, text) {
+    const el = $('#connection-status');
+    if (!el) return;
+    el.className = `connection-status ${kind}`; // guest | pending | connected
+    const t = el.querySelector('.status-text');
+    if (t) t.textContent = text;
   }
 
   function forceTo(id) {
@@ -91,9 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
       await db.enablePersistence();
       console.log("Firebase Offline Persistence enabled.");
     } catch (err) {
-      if (err.code === 'failed-precondition') {
+      if (err && err.code === 'failed-precondition') {
         console.warn("Multiple tabs open, persistence can only be enabled in one tab at a time.");
-      } else if (err.code === 'unimplemented') {
+      } else if (err && err.code === 'unimplemented') {
         console.warn("This browser doesn't fully support persistence.");
       }
     }
@@ -113,6 +120,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initMonitoring();
     initInstallPrompt();
 
+    // Tangani hasil redirect (Safari/iOS/popup terblokir)
+    await handleRedirectResult();
+
+    // Health check koneksi Firestore/Auth
+    firebaseHealthCheck();
+
     const lastPage = localStorage.getItem('lastActivePage') || 'dashboard';
     showPage(lastPage);
   }
@@ -125,6 +138,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUIForUser();
         detachDataListeners();
         clearAllData();
+        setConnectionStatus('guest', 'Tidak terhubung');
+        document.body.classList.toggle('is-guest', true);
+        document.body.classList.toggle('is-pending', false);
         return forceTo('dashboard');
       }
 
@@ -133,11 +149,15 @@ document.addEventListener('DOMContentLoaded', () => {
       forceTo('dashboard');
       showPopup('loading', 'Menyiapkan akun...');
 
-      // Dapatkan role dari custom claims; fallback Firestore; fallback owner email
+      // Dapatkan role (custom claims > Firestore > whitelist email)
       userRole = await resolveUserRole(user);
 
       updateUIForUser();
       attachDataListeners();
+
+      // State body (opsional untuk CSS helper)
+      document.body.classList.toggle('is-guest', false);
+      document.body.classList.toggle('is-pending', userRole === 'Pending');
 
       // Aturan navigasi untuk Pending
       const last = localStorage.getItem('lastActivePage') || 'dashboard';
@@ -145,12 +165,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Modal pending info
       if (isPending()) {
-        const pendingEmailEl = $('#pending-email');
-        if (pendingEmailEl) pendingEmailEl.textContent = user.email || '';
+        $('#pending-email')?.textContent = user.email || '';
         $('#pending-auth-modal')?.classList.remove('hidden');
+        setConnectionStatus('pending', `Menunggu persetujuan (${user.email})`);
         showPopup('success', 'Login berhasil. Status akun: Pending');
       } else {
         $('#pending-auth-modal')?.classList.add('hidden');
+        setConnectionStatus('connected', `Terhubung sebagai ${user.email}`);
         showPopup('success', 'Login berhasil.');
       }
     });
@@ -160,15 +181,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const authDropdownBtn = $('#auth-dropdown-btn');
 
     const handleLogin = async () => {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      // (opsional) tambah scope jika perlu API Google lain:
+      // provider.addScope('https://www.googleapis.com/auth/drive.readonly');
+
       try {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        showPopup('loading', 'Mengautentikasi...');
+        showPopup('loading', 'Mengautentikasi dengan Google...');
         clearTimeout(slowLoginTimer);
         slowLoginTimer = setTimeout(() => {
-          showPopup('error', 'Login lambat. Cek internet atau coba ulang.');
+          showPopup('error', 'Login lambat. Cek koneksi atau coba ulang.');
         }, 10000);
+
         await auth.signInWithPopup(provider);
+
+        const u = auth.currentUser;
+        if (u) showPopup('success', `Terhubung sebagai ${u.email}`);
       } catch (err) {
+        // Domain belum di-whitelist di Firebase Auth
+        if (err?.code === 'auth/unauthorized-domain') {
+          return showPopup('error', 'Domain belum diizinkan di Firebase Auth. Tambahkan "zoonine.github.io" ke Authorized domains.');
+        }
+        // Popup diblokir → fallback redirect
+        if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/operation-not-supported-in-this-environment') {
+          showPopup('loading', 'Pop-up diblokir. Menggunakan redirect...');
+          const provider = new firebase.auth.GoogleAuthProvider();
+          return auth.signInWithRedirect(provider);
+        }
         showPopup('error', err?.message || 'Gagal login.');
       } finally {
         clearTimeout(slowLoginTimer);
@@ -193,21 +231,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * Ambil role dari custom claims (pro). Fallback: Firestore users/{uid}.role.
+   * Ambil role dari custom claims (otoritatif).
+   * Fallback: Firestore users/{uid}.role.
    * Fallback terakhir: OWNER_EMAILS (auto Owner) atau 'Pending'.
    * Menjaga dokumen users/{uid} selalu tersedia untuk UI.
    * @param {firebase.User} user
-   * @returns {Promise<string>}
+   * @returns {Promise<"Pending"|"User"|"Admin"|"Owner">}
    */
   async function resolveUserRole(user) {
     const email = (user.email || '').toLowerCase();
     const isEmailOwner = OWNER_EMAILS.map(e => e.toLowerCase()).includes(email);
 
-    // 1) Coba dari custom claims (sumber otoritatif)
+    // 1) Custom claims (sumber kebenaran)
     try {
       const token = await user.getIdTokenResult(true);
       if (token.claims && token.claims.role) {
-        const roleFromClaims = String(token.claims.role);
+        const roleFromClaims = /** @type any */(token.claims.role);
         await mirrorUserDoc(user, roleFromClaims); // sinkron UI (tidak otoritatif)
         return roleFromClaims;
       }
@@ -215,13 +254,13 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('getIdTokenResult failed:', e);
     }
 
-    // 2) Fallback Firestore
+    // 2) Firestore fallback
     try {
       const userRef = db.collection('users').doc(user.uid);
       const snap = await userRef.get();
       if (snap.exists) {
         const data = snap.data() || {};
-        if (data.role) return String(data.role);
+        if (data.role) return /** @type any */(data.role);
         // kalau ada doc tapi tak ada role, set default
         const role = isEmailOwner ? 'Owner' : 'Pending';
         await userRef.set({ role }, { merge: true });
@@ -242,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 3) Fallback terakhir (tanpa DB)
-    return isEmailOwner ? 'Owner' : 'Pending';
+    return /** @type any */(isEmailOwner ? 'Owner' : 'Pending');
   }
 
   async function mirrorUserDoc(user, role) {
@@ -255,6 +294,66 @@ document.addEventListener('DOMContentLoaded', () => {
       }, { merge: true });
     } catch (e) {
       console.warn('Mirror user doc failed:', e);
+    }
+  }
+
+  // ===== Firebase Health Check =====
+  async function firebaseHealthCheck() {
+    try {
+      const ver = firebase.SDK_VERSION || '(unknown)';
+      console.log('[HealthCheck] Firebase SDK version:', ver);
+      if (!firebase.apps || !firebase.apps.length) {
+        showPopup('error', 'Firebase belum initialize (apps.length=0)');
+        return;
+      }
+      console.log('[HealthCheck] App options:', firebase.app().options);
+
+      const t0 = Date.now();
+      await firebase.firestore().collection('__healthcheck').limit(1).get();
+      const dt = Date.now() - t0;
+      console.log('[HealthCheck] Firestore GET ok in', dt, 'ms');
+      showPopup('success', `Terhubung ke Firestore (${dt} ms)`);
+    } catch (err) {
+      console.warn('[HealthCheck] Firestore error:', err);
+      let msg = 'Gagal akses Firestore.';
+      if (err && err.code) {
+        if (err.code === 'permission-denied') {
+          msg = 'Firestore Rules menolak akses (permission-denied). Cek rules.';
+        } else if (err.code === 'unavailable') {
+          msg = 'Firestore tidak tersedia / jaringan bermasalah (unavailable).';
+        } else if (err.code === 'failed-precondition') {
+          msg = 'Persistence konflik (multi tab). Tutup tab lain atau matikan persistence.';
+        } else {
+          msg = `Firestore error: ${err.code}`;
+        }
+      } else if (err?.message) {
+        msg = err.message;
+      }
+      showPopup('error', msg);
+    }
+
+    try {
+      const user = firebase.auth().currentUser;
+      if (user) {
+        console.log('[HealthCheck] Auth OK as', user.email);
+      } else {
+        console.log('[HealthCheck] Belum login (Auth OK).');
+      }
+    } catch (e) {
+      console.warn('[HealthCheck] Auth check error:', e);
+      showPopup('error', 'Auth tidak tersedia.');
+    }
+  }
+
+  // Tangani hasil signInWithRedirect (popup blocked)
+  async function handleRedirectResult() {
+    try {
+      const result = await auth.getRedirectResult();
+      if (result && result.user) {
+        showPopup('success', `Terhubung sebagai ${result.user.email}`);
+      }
+    } catch (err) {
+      if (err?.message) showPopup('error', err.message);
     }
   }
 
@@ -364,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
       };
     }
 
-    // User dropdown
+    // User & Notifications dropdown
     const userProfileBtn = $('#user-profile-btn');
     const userDropdown = $('#user-dropdown');
     const notificationBtn = $('#notification-btn');
@@ -396,9 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function showPage(id) {
     // Route guard kedua (jaga pemanggilan langsung)
-    if (!canNavigateTo(id)) {
-      id = 'dashboard';
-    }
+    if (!canNavigateTo(id)) id = 'dashboard';
 
     $$('.page').forEach(p => p.classList.remove('active'));
     const page = $(`#page-${id}`);
@@ -485,15 +582,20 @@ document.addEventListener('DOMContentLoaded', () => {
     showPopup('loading', 'Memuat data...');
     const uid = currentUser.uid;
 
-    // Contoh listener
+    // Contoh listener (ganti sesuai koleksimu)
     const workersRef = db.collection('users').doc(uid).collection('workers');
-    const workerListener = workersRef.onSnapshot(snapshot => {
-      const workers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      populateWorkers(workers);
-    }, err => console.error("Error fetching workers:", err));
+    const workerListener = workersRef.onSnapshot(
+      snapshot => {
+        const workers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        populateWorkers(workers);
+        showPopup('success', 'Data real-time aktif.');
+      },
+      err => {
+        console.error("Error fetching workers:", err);
+        showPopup('error', err?.message || 'Gagal mendengar data (workers).');
+      }
+    );
     listeners.push(workerListener);
-
-    showPopup('success', 'Data real-time aktif.');
   }
 
   function detachDataListeners() {
