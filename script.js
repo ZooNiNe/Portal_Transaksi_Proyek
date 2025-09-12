@@ -72,13 +72,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function setConnectionStatus(kind, text) {
+  function setConnectionStatus(kind) {
     const el = $('#connection-status');
     if (!el) return;
-    el.className = `connection-status ${kind}`; // guest | pending | connected
-    const t = el.querySelector('.status-text');
-    if (t) t.textContent = text;
+    // kind: 'guest' | 'pending' | 'connected'
+    el.className = `connection-status ${kind}`;
   }
+  
 
   function forceTo(id) {
     localStorage.setItem('lastActivePage', id);
@@ -86,12 +86,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function canNavigateTo(id) {
-    if (isOwner()) return true;
-    if (isPending()) return ALLOWED_WHEN_PENDING.has(id);
-    return true;
+    if (isOwner()) return true;                 // Owner bebas
+    if (isPending()) return ALLOWED_WHEN_PENDING.has(id); // Pending dibatasi
+    return true;                                // User/Admin bebas
   }
-
-  /* ===== Firebase Initialization & Auth ===== */
+    /* ===== Firebase Initialization & Auth ===== */
   async function init() {
     // Offline persistence
     try {
@@ -132,50 +131,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function initAuth() {
     auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        currentUser = null;
-        userRole = 'Guest';
+        if (!user) {
+          currentUser = null;
+          userRole = 'Guest';
+          updateUIForUser();
+          detachDataListeners();
+          clearAllData();
+          setConnectionStatus('guest');
+          document.body.classList.toggle('is-guest', true);
+          document.body.classList.toggle('is-pending', false);
+          return forceTo('dashboard');
+        }
+      
+        currentUser = user;
+      
+        // === FAST-PATH OWNER (email whitelist) ===
+        const emailLower = (user.email || '').toLowerCase();
+        const ownerEmailsLower = OWNER_EMAILS.map(e => e.toLowerCase());
+        if (ownerEmailsLower.includes(emailLower)) {
+          userRole = 'Owner';              // langsung Owner
+        } else {
+          userRole = await resolveUserRole(user);  // klaim → Firestore → fallback
+        }
+      
+        // Pastikan langsung ke dashboard (landing) & UI kebuka
+        forceTo('dashboard');
         updateUIForUser();
-        detachDataListeners();
-        clearAllData();
-        setConnectionStatus('guest', 'Tidak terhubung');
-        document.body.classList.toggle('is-guest', true);
-        document.body.classList.toggle('is-pending', false);
-        return forceTo('dashboard');
-      }
-
-      currentUser = user;
-      // Lindungi dari blank: segera ke dashboard
-      forceTo('dashboard');
-      showPopup('loading', 'Menyiapkan akun...');
-
-      // Dapatkan role (custom claims > Firestore > whitelist email)
-      userRole = await resolveUserRole(user);
-
-      updateUIForUser();
-      attachDataListeners();
-
-      // State body (opsional untuk CSS helper)
-      document.body.classList.toggle('is-guest', false);
-      document.body.classList.toggle('is-pending', userRole === 'Pending');
-
-      // Aturan navigasi untuk Pending
-      const last = localStorage.getItem('lastActivePage') || 'dashboard';
-      if (!canNavigateTo(last)) forceTo('dashboard');
-
-      // Modal pending info
-      if (isPending()) {
-        $('#pending-email')?.textContent = user.email || '';
-        $('#pending-auth-modal')?.classList.remove('hidden');
-        setConnectionStatus('pending', `Menunggu persetujuan (${user.email})`);
-        showPopup('success', 'Login berhasil. Status akun: Pending');
-      } else {
-        $('#pending-auth-modal')?.classList.add('hidden');
-        setConnectionStatus('connected', `Terhubung sebagai ${user.email}`);
-        showPopup('success', 'Login berhasil.');
-      }
-    });
-
+        attachDataListeners();
+      
+        // (Opsional) toggle body state untuk styling ringan, tapi sudah tidak meng-hide apa pun di CSS
+        document.body.classList.toggle('is-guest', false);
+        document.body.classList.toggle('is-pending', userRole === 'Pending');
+      
+        // Status koneksi DOT
+        if (userRole === 'Pending') {
+          $('#pending-email')?.textContent = user.email || '';
+          $('#pending-auth-modal')?.classList.remove('hidden');
+          setConnectionStatus('pending');
+          showPopup('success', 'Login berhasil. Status akun: Pending');
+        } else {
+          $('#pending-auth-modal')?.classList.add('hidden');
+          setConnectionStatus('connected');
+          showPopup('success', 'Login berhasil.');
+        }
+      });
+      
     const authBtn = $('#auth-btn');
     const googleLoginBtn = $('#google-login-btn');
     const authDropdownBtn = $('#auth-dropdown-btn');
@@ -369,21 +369,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Nav click handler dengan route guard
     $$('[data-nav]').forEach(btn => {
-      if (!(btn instanceof HTMLElement) || !btn.dataset.nav) return;
-      btn.addEventListener('click', () => {
-        const targetId = btn.dataset.nav;
-        if (!canNavigateTo(targetId)) {
-          showPopup('error', 'Akses terbatas untuk akun Pending.');
-          return forceTo('dashboard');
-        }
-        showPage(targetId);
-        if (window.innerWidth <= 992) {
-          sidebar.classList.remove('open');
-          scrim.classList.remove('show');
-        }
+        if (!(btn instanceof HTMLElement) || !btn.dataset.nav) return;
+        btn.addEventListener('click', () => {
+          const targetId = btn.dataset.nav;
+          if (!canNavigateTo(targetId)) {
+            showPopup('error', 'Akses terbatas untuk akun Pending.');
+            return forceTo('dashboard');
+          }
+          showPage(targetId);
+          // tutup sidebar di layar kecil
+          if (window.innerWidth <= 992) {
+            $('#sidebar')?.classList.remove('open');
+            $('#scrim')?.classList.remove('show');
+          }
+        });
       });
-    });
-
+      
     // Link cepat antar section
     $$('[data-nav-link]').forEach(el => {
       el.addEventListener('click', (e) => {

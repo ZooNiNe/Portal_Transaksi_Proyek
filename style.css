@@ -442,38 +442,25 @@ body.dark-theme .custom-select-option:hover, body.dark-theme .custom-select-opti
 .custom-select-option small { display: block; color: var(--text-secondary-light); }
 body.dark-theme .custom-select-option small { color: var(--text-secondary-dark); }
 
-/* ===== 13. Auth & State specific styles ===== */
-/* Guest hide elements */
-body.is-guest #fab-add-btn,
-body.is-guest .btn-manage,
-body.is-guest [data-nav="input-data"],
-body.is-guest [data-nav="stok-material"],
-body.is-guest [data-nav="pengaturan"],
-body.is-guest .action-btn,
-body.is-guest .card-header-actions { display: none !important; }
-
-/* Pending (opsional, JS tetap sumber kebenaran) */
-body.is-pending [data-nav="input-data"],
-body.is-pending [data-nav="stok-material"],
-body.is-pending [data-nav="tagihan"],
-body.is-pending [data-nav="absensi"],
-body.is-pending [data-nav="pengaturan"] { display: none !important; }
-
-/* ===== 14. Connection Status ===== */
+/* === DOT-ONLY connection status === */
 .connection-status {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 10px; border: 1px solid var(--border-light);
-  border-radius: 999px; background: var(--bg-content-light);
-  color: var(--text-primary-light);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:16px; height:16px;
+  border-radius:50%;
+  /* container transparan, biar cuma dot yang kelihatan */
+  background: transparent;
+  border: none;
+  padding: 0;
 }
-body.dark-theme .connection-status {
-  background: var(--bg-content-dark); border-color: var(--border-dark);
-  color: var(--text-primary-dark);
+.connection-status .status-dot {
+  width:10px; height:10px; border-radius:50%;
+  background:#ef4444; /* default: merah (guest) */
 }
-.connection-status .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; }
-.connection-status.connected .status-dot { background: #22c55e; }
-.connection-status.pending .status-dot { background: #f59e0b; }
-.connection-status.guest .status-dot { background: #ef4444; }
+.connection-status.connected .status-dot { background:#22c55e; } /* hijau */
+.connection-status.pending  .status-dot { background:#f59e0b; } /* oranye */
+.connection-status.guest    .status-dot { background:#ef4444; } /* merah */
 
 /* ===== 15. Utilities & Animations ===== */
 .w-full { width: 100%; }
