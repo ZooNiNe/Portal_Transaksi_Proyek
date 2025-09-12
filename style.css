@@ -201,3 +201,50 @@ textarea{ resize:vertical; }
 
 /* Touch tweaks */
 * { -webkit-tap-highlight-color: transparent; }
+
+/* === Auth Modal Polished (unified across devices) === */
+#login-modal.modal-bg { z-index: 1200; }
+#login-modal .modal-content {
+  max-width: 520px;
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 0;
+}
+.auth-card {
+  background: var(--panel);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+.auth-card .auth-header {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.auth-card .auth-header h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.auth-card .auth-body {
+  padding: 16px 18px;
+  color: var(--text-dim);
+}
+.auth-card .auth-actions {
+  padding: 16px 18px;
+  border-top: 1px solid var(--line);
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.google-btn.w-full {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #111827;
+  border-radius: 12px;
+  padding: .75rem 1rem;
+}
+body.dark-theme .google-btn.w-full {
+  background: #ffffff;
+  color: #111827;
+}
+.google-btn .google-icon { width: 18px; height: 18px; }
+@media (max-width: 420px) {
+  #login-modal .modal-content { margin: 0 12px; }
+}

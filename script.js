@@ -243,28 +243,76 @@ document.addEventListener('DOMContentLoaded', () => {
       badge.classList.toggle('hidden', !(n>0));
     }
   
-    // ===== Auth: popup desktop, redirect mobile =====
-    async function signInWithGoogle(){
-      try{
-        $('#login-modal')?.classList.add('hidden'); lockScroll(false);
-        const provider = new firebase.auth.GoogleAuthProvider();
-        toast('loading','Menyambungkan akun…');
-        if(isMobileLike() || isIOS()){
-          await auth.signInWithRedirect(provider);
-          return;
-        }else{
-          await auth.signInWithPopup(provider);
-          toast('success','Login berhasil.');
-        }
-      }catch(e){
-        toast('error', e?.message || 'Login gagal.');
-        $('#login-modal')?.classList.remove('hidden'); lockScroll(true);
-      }
+// Gunakan bahasa perangkat
+auth.useDeviceLanguage?.();
+
+// Deteksi file:// dan beri warning + cegah login macet
+(function guardFileProtocol(){
+  if (location.protocol === 'file:') {
+    // Non-aktifkan tombol login agar tidak memicu error membingungkan
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const btn = document.getElementById('google-login-btn');
+      btn && (btn.disabled = true);
+    });
+    // Info jelas untuk dev
+    console.warn('Firebase Auth tidak mendukung file://. Jalankan via http(s) (localhost/hosting).');
+  }
+})();
+
+async function signInWithGoogle(){
+  const provider = new firebase.auth.GoogleAuthProvider();
+  try {
+    // tutup modal agar tidak tumpang tindih
+    document.getElementById('login-modal')?.classList.add('hidden');
+    // loading
+    typeof toast === 'function' && toast('loading', 'Menyambungkan akun…');
+
+    // mobile/ios → pakai redirect
+    const useRedirect = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth < 768;
+
+    if (useRedirect) {
+      await auth.signInWithRedirect(provider);
+      return;
     }
-  
-    auth.getRedirectResult()
-      .then((res)=>{ if(res && res.user){ toast('success','Login berhasil.'); $('#login-modal')?.classList.add('hidden'); lockScroll(false); }})
-      .catch((e)=>{ if(e && e.code) toast('error', e.message); });
+
+    await auth.signInWithPopup(provider);
+    typeof toast === 'function' && toast('success', 'Login berhasil.');
+  } catch (err) {
+    // Popup diblokir → fallback otomatis redirect
+    if (err && (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-closed-by-user')) {
+      try {
+        await auth.signInWithRedirect(provider);
+        return;
+      } catch (e2) {
+        typeof toast === 'function' && toast('error', mapAuthError(e2));
+      }
+      return;
+    }
+    typeof toast === 'function' && toast('error', mapAuthError(err));
+    // buka lagi modal untuk user
+    document.getElementById('login-modal')?.classList.remove('hidden');
+  }
+}
+
+// Handle hasil redirect (mobile)
+auth.getRedirectResult()
+  .then(res => {
+    if (res && res.user) {
+      typeof toast === 'function' && toast('success', 'Login berhasil.');
+      document.getElementById('login-modal')?.classList.add('hidden');
+    }
+  })
+  .catch(e => typeof toast === 'function' && toast('error', mapAuthError(e)));
+
+// Pesan error ramah
+function mapAuthError(e){
+  const c = e?.code || '';
+  if (c.includes('network')) return 'Jaringan bermasalah. Coba lagi.';
+  if (c.includes('unauthorized-domain')) return 'Domain belum diizinkan di Firebase Authentication.';
+  if (c.includes('operation-not-allowed') || c.includes('provider-disabled')) return 'Sign in Google belum diaktifkan di Firebase.';
+  if (c.includes('cancelled')) return 'Login dibatalkan.';
+  return e?.message || 'Login gagal.';
+}
   
     auth.onAuthStateChanged(async (user)=>{
       if(user){
