@@ -1,7 +1,7 @@
-<script>
 // @ts-check
 /* =======================================================
  * PKP Frontend v5.2 - Final Build (Firebase Architecture)
+ * (Client Script - Full Revised)
  * ======================================================= */
 
 /**
@@ -9,7 +9,6 @@
  * @global {any} Chart
  */
 
-// Define custom properties on the Window interface for TypeScript
 window.Chart = window.Chart || {};
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -26,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   // =================================================================
 
-  // Initialize Firebase
+  // Init Firebase v8
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   const auth = firebase.auth();
@@ -35,18 +34,28 @@ document.addEventListener('DOMContentLoaded', () => {
   let ITEMS = [];
   /** @type {Chart | null} */
   let dashboardChart = null;
-  let currentUser = null;     // Holds user auth object
-  let userRole = 'Guest';     // Holds user role from Firestore
-  let listeners = [];         // To hold Firestore listeners
+  /** @type {firebase.User|null} */
+  let currentUser = null;
+  /** @type {string} */
+  let userRole = 'Guest'; // sumber kebenaran: custom claims; fallback: Firestore
+  /** @type {Array<() => void>} */
+  let listeners = [];
 
-  /* ===== Helpers ===== */
+  // === Konfigurasi akses & fallback owner ===
+  const OWNER_EMAILS = ['dq060412@gmail.com']; // <-- ganti ke email Owner kamu
+  const ALLOWED_WHEN_PENDING = new Set(['dashboard','monitoring']); // id halaman yang boleh untuk Pending
+
+  // === Helpers
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n || 0);
   const num = (v) => Number(String(v || '').replace(/[^\d]/g, ''));
-  const fmtDate = (d) => { try { return new Date(d).toISOString().split('T')[0]; } catch(e) { return ''; } };
+  const fmtDate = (d) => { try { return new Date(d).toISOString().split('T')[0]; } catch { return ''; } };
+  const isOwner = () => userRole === 'Owner';
+  const isPending = () => userRole === 'Pending';
 
   let popupTimeout, slowLoginTimer;
+
   function showPopup(kind, text) {
     clearTimeout(popupTimeout);
     const p = $('#popup-container');
@@ -54,26 +63,46 @@ document.addEventListener('DOMContentLoaded', () => {
     p.className = 'popup-container show popup-' + kind;
     const iconEl = $('#popup-icon');
     const messageEl = $('#popup-message');
-    if (!iconEl || !messageEl) return;
-    iconEl.className = kind === 'loading' ? 'spinner' : 'material-symbols-outlined';
-    iconEl.textContent = kind === 'success' ? 'check_circle' : (kind === 'error' ? 'cancel' : '');
-    messageEl.textContent = text;
+    if (iconEl && messageEl) {
+      iconEl.className = kind === 'loading' ? 'spinner' : 'material-symbols-outlined';
+      iconEl.textContent = kind === 'success' ? 'check_circle' : (kind === 'error' ? 'cancel' : '');
+      messageEl.textContent = text;
+    }
     if (kind !== 'loading') {
       popupTimeout = setTimeout(() => p.classList.remove('show'), 4000);
     }
   }
 
+  function forceTo(id) {
+    localStorage.setItem('lastActivePage', id);
+    showPage(id);
+  }
+
+  function canNavigateTo(id) {
+    if (isOwner()) return true;
+    if (isPending()) return ALLOWED_WHEN_PENDING.has(id);
+    return true;
+  }
+
   /* ===== Firebase Initialization & Auth ===== */
   async function init() {
+    // Offline persistence
     try {
       await db.enablePersistence();
       console.log("Firebase Offline Persistence enabled.");
     } catch (err) {
-      if (err.code == 'failed-precondition') {
+      if (err.code === 'failed-precondition') {
         console.warn("Multiple tabs open, persistence can only be enabled in one tab at a time.");
-      } else if (err.code == 'unimplemented') {
-        console.warn("The current browser does not support all of the features required to enable persistence.");
+      } else if (err.code === 'unimplemented') {
+        console.warn("This browser doesn't fully support persistence.");
       }
+    }
+
+    // Keep session (tetap login)
+    try {
+      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } catch (e) {
+      console.warn('Set persistence failed:', e);
     }
 
     injectPageHTML();
@@ -84,53 +113,45 @@ document.addEventListener('DOMContentLoaded', () => {
     initMonitoring();
     initInstallPrompt();
 
-    // Saat awal buka, default ke dashboard (guest view)
-    showPage('dashboard');
+    const lastPage = localStorage.getItem('lastActivePage') || 'dashboard';
+    showPage(lastPage);
   }
 
   function initAuth() {
     auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        currentUser = user;
-
-        // Tampilkan loading & langsung arahkan ke dashboard
-        showPopup('loading', 'Menyiapkan dashboard...');
-        localStorage.setItem('lastActivePage', 'dashboard');
-        showPage('dashboard');
-
-        try {
-          await checkUserRole(user);
-        } catch (e) {
-          console.warn('Gagal cek role:', e);
-          userRole = 'Pending';
-        }
-
-        updateUIForUser();
-        attachDataListeners();
-
-        // Tutup modal login bila masih terbuka
-        $('#login-modal')?.classList.add('hidden');
-
-        if (userRole === 'Pending') {
-          // Jelaskan status pending, jangan blank
-          const pendingEmailEl = $('#pending-email');
-          if (pendingEmailEl) pendingEmailEl.textContent = user.email;
-          $('#pending-auth-modal')?.classList.remove('hidden');
-          showPopup('success', 'Login berhasil. Akun menunggu persetujuan.');
-        } else {
-          showPopup('success', 'Login berhasil. Selamat datang!');
-        }
-      } else {
-        // Logged out
+      if (!user) {
         currentUser = null;
         userRole = 'Guest';
         updateUIForUser();
         detachDataListeners();
         clearAllData();
+        return forceTo('dashboard');
+      }
 
-        // Saat logout, pastikan tetap di dashboard (guest)
-        localStorage.setItem('lastActivePage', 'dashboard');
-        showPage('dashboard');
+      currentUser = user;
+      // Lindungi dari blank: segera ke dashboard
+      forceTo('dashboard');
+      showPopup('loading', 'Menyiapkan akun...');
+
+      // Dapatkan role dari custom claims; fallback Firestore; fallback owner email
+      userRole = await resolveUserRole(user);
+
+      updateUIForUser();
+      attachDataListeners();
+
+      // Aturan navigasi untuk Pending
+      const last = localStorage.getItem('lastActivePage') || 'dashboard';
+      if (!canNavigateTo(last)) forceTo('dashboard');
+
+      // Modal pending info
+      if (isPending()) {
+        const pendingEmailEl = $('#pending-email');
+        if (pendingEmailEl) pendingEmailEl.textContent = user.email || '';
+        $('#pending-auth-modal')?.classList.remove('hidden');
+        showPopup('success', 'Login berhasil. Status akun: Pending');
+      } else {
+        $('#pending-auth-modal')?.classList.add('hidden');
+        showPopup('success', 'Login berhasil.');
       }
     });
 
@@ -142,11 +163,9 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const provider = new firebase.auth.GoogleAuthProvider();
         showPopup('loading', 'Mengautentikasi...');
-        // Warning kalau login lambat
         clearTimeout(slowLoginTimer);
         slowLoginTimer = setTimeout(() => {
-          showPopup('error', 'Login lambat. Cek koneksi/internet atau coba ulang.');
-          // Tetap biarkan proses login berjalan di belakang
+          showPopup('error', 'Login lambat. Cek internet atau coba ulang.');
         }, 10000);
         await auth.signInWithPopup(provider);
       } catch (err) {
@@ -164,7 +183,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (googleLoginBtn) googleLoginBtn.addEventListener('click', handleLogin);
-
     if (authDropdownBtn) authDropdownBtn.addEventListener('click', () => {
       if (currentUser) handleLogout();
       else {
@@ -174,21 +192,69 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  async function checkUserRole(user) {
-    const userRef = db.collection('users').doc(user.uid);
-    const userDoc = await userRef.get();
+  /**
+   * Ambil role dari custom claims (pro). Fallback: Firestore users/{uid}.role.
+   * Fallback terakhir: OWNER_EMAILS (auto Owner) atau 'Pending'.
+   * Menjaga dokumen users/{uid} selalu tersedia untuk UI.
+   * @param {firebase.User} user
+   * @returns {Promise<string>}
+   */
+  async function resolveUserRole(user) {
+    const email = (user.email || '').toLowerCase();
+    const isEmailOwner = OWNER_EMAILS.map(e => e.toLowerCase()).includes(email);
 
-    if (!userDoc.exists) {
-      await userRef.set({
-        email: user.email,
-        name: user.displayName,
-        avatar: user.photoURL,
-        role: 'Pending',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      userRole = 'Pending';
-    } else {
-      userRole = userDoc.data().role || 'Pending';
+    // 1) Coba dari custom claims (sumber otoritatif)
+    try {
+      const token = await user.getIdTokenResult(true);
+      if (token.claims && token.claims.role) {
+        const roleFromClaims = String(token.claims.role);
+        await mirrorUserDoc(user, roleFromClaims); // sinkron UI (tidak otoritatif)
+        return roleFromClaims;
+      }
+    } catch (e) {
+      console.warn('getIdTokenResult failed:', e);
+    }
+
+    // 2) Fallback Firestore
+    try {
+      const userRef = db.collection('users').doc(user.uid);
+      const snap = await userRef.get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        if (data.role) return String(data.role);
+        // kalau ada doc tapi tak ada role, set default
+        const role = isEmailOwner ? 'Owner' : 'Pending';
+        await userRef.set({ role }, { merge: true });
+        return role;
+      } else {
+        const role = isEmailOwner ? 'Owner' : 'Pending';
+        await userRef.set({
+          email: user.email || '',
+          name: user.displayName || '',
+          avatar: user.photoURL || '',
+          role,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        return role;
+      }
+    } catch (e) {
+      console.warn('Fallback Firestore role error:', e);
+    }
+
+    // 3) Fallback terakhir (tanpa DB)
+    return isEmailOwner ? 'Owner' : 'Pending';
+  }
+
+  async function mirrorUserDoc(user, role) {
+    try {
+      await db.collection('users').doc(user.uid).set({
+        email: user.email || '',
+        name: user.displayName || '',
+        avatar: user.photoURL || '',
+        role
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Mirror user doc failed:', e);
     }
   }
 
@@ -202,10 +268,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     scrim.onclick = () => { sidebar.classList.remove('open'); scrim.classList.remove('show'); };
 
+    // Nav click handler dengan route guard
     $$('[data-nav]').forEach(btn => {
       if (!(btn instanceof HTMLElement) || !btn.dataset.nav) return;
       btn.addEventListener('click', () => {
-        showPage(btn.dataset.nav);
+        const targetId = btn.dataset.nav;
+        if (!canNavigateTo(targetId)) {
+          showPopup('error', 'Akses terbatas untuk akun Pending.');
+          return forceTo('dashboard');
+        }
+        showPage(targetId);
         if (window.innerWidth <= 992) {
           sidebar.classList.remove('open');
           scrim.classList.remove('show');
@@ -213,53 +285,62 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    // Link cepat antar section
     $$('[data-nav-link]').forEach(el => {
       el.addEventListener('click', (e) => {
         if (e.target.closest('button')) return;
         const navId = (el instanceof HTMLElement) ? el.dataset.navLink : null;
-        if (navId) {
+        if (!navId) return;
+        if (!canNavigateTo(navId)) {
+          showPopup('error', 'Akses terbatas untuk akun Pending.');
+          return forceTo('dashboard');
+        }
+        const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
+        if (targetNavElement instanceof HTMLElement) {
+          targetNavElement.click();
           const monitorTarget = (el instanceof HTMLElement) ? el.dataset.monitorTarget : null;
-          const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
-          if (targetNavElement instanceof HTMLElement) {
-            targetNavElement.click();
-            if (monitorTarget) {
-              setTimeout(() => {
-                const targetTab = $(`#page-monitoring .tab-btn[data-kategori="${monitorTarget}"]`);
-                if (targetTab instanceof HTMLElement) targetTab.click();
-              }, 50);
-            }
+          if (monitorTarget) {
+            setTimeout(() => {
+              const targetTab = $(`#page-monitoring .tab-btn[data-kategori="${monitorTarget}"]`);
+              if (targetTab instanceof HTMLElement) targetTab.click();
+            }, 50);
           }
         }
       });
     });
 
+    // Quick link ke form tertentu
     $$('[data-quick-link]').forEach(el => {
       el.addEventListener('click', () => {
-        if (el instanceof HTMLElement) {
-          const navId = el.dataset.quickLink;
-          const formTarget = el.dataset.formTarget;
-          if (navId) {
-            const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
-            if (targetNavElement instanceof HTMLElement) {
-              targetNavElement.click();
-              if (formTarget) {
-                setTimeout(() => {
-                  const targetTab = $(`#input-type-selector .tab-btn[data-form="${formTarget}"]`);
-                  if (targetTab instanceof HTMLElement) targetTab.click();
-                }, 50);
-              }
-            }
+        if (!(el instanceof HTMLElement)) return;
+        const navId = el.dataset.quickLink;
+        const formTarget = el.dataset.formTarget;
+        if (!navId) return;
+        if (!canNavigateTo(navId)) {
+          showPopup('error', 'Akses terbatas untuk akun Pending.');
+          return forceTo('dashboard');
+        }
+        const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
+        if (targetNavElement instanceof HTMLElement) {
+          targetNavElement.click();
+          if (formTarget) {
+            setTimeout(() => {
+              const targetTab = $(`#input-type-selector .tab-btn[data-form="${formTarget}"]`);
+              if (targetTab instanceof HTMLElement) targetTab.click();
+            }, 50);
           }
         }
       });
     });
 
+    // Refresh data
     const btnRefresh = $('#btnRefresh');
     if (btnRefresh) btnRefresh.onclick = (e) => {
       e.stopPropagation();
       attachDataListeners();
     };
 
+    // Tema
     const themeToggleBtn = $('#theme-toggle-btn');
     if (themeToggleBtn) {
       themeToggleBtn.onclick = () => {
@@ -271,6 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.classList.add('dark-theme');
     }
 
+    // Pencarian global
     const searchBtn = $('#global-search-btn');
     const searchContainer = $('#global-search-container');
     if (searchBtn && searchContainer) {
@@ -279,20 +361,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (searchContainer.classList.contains('active')) {
           $('#global-search-input')?.focus();
         }
-      }
+      };
     }
 
+    // User dropdown
     const userProfileBtn = $('#user-profile-btn');
     const userDropdown = $('#user-dropdown');
+    const notificationBtn = $('#notification-btn');
+    const notificationDropdown = $('#notification-dropdown');
+
     if (userProfileBtn && userDropdown) {
       userProfileBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         userDropdown.classList.toggle('show');
       });
     }
-
-    const notificationBtn = $('#notification-btn');
-    const notificationDropdown = $('#notification-dropdown');
     if (notificationBtn && notificationDropdown) {
       notificationBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -301,18 +384,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.addEventListener('click', (e) => {
-      const target = e.target;
-      if (userDropdown && !userDropdown.contains(target) && userProfileBtn && !userProfileBtn.contains(target)) {
+      const t = e.target;
+      if (userDropdown && !userDropdown.contains(t) && userProfileBtn && !userProfileBtn.contains(t)) {
         userDropdown.classList.remove('show');
       }
-      if (notificationDropdown && !notificationDropdown.contains(target) && notificationBtn && !notificationBtn.contains(target)) {
+      if (notificationDropdown && !notificationDropdown.contains(t) && notificationBtn && !notificationBtn.contains(t)) {
         notificationDropdown.classList.remove('show');
       }
     });
   }
 
   function showPage(id) {
-    // Pastikan elemen page tersedia
+    // Route guard kedua (jaga pemanggilan langsung)
+    if (!canNavigateTo(id)) {
+      id = 'dashboard';
+    }
+
     $$('.page').forEach(p => p.classList.remove('active'));
     const page = $(`#page-${id}`);
     if (page) page.classList.add('active');
@@ -367,12 +454,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Sembunyikan/lihat elemen berdasarkan role
+    // Tampilkan/sembunyikan elemen berdasarkan role
     $$('[data-role]').forEach(el => {
-      if (el instanceof HTMLElement) {
-        const roles = el.dataset.role.split(',').map(s => s.trim());
-        el.style.display = roles.includes(userRole) ? '' : 'none';
+      if (!(el instanceof HTMLElement)) return;
+      if (isOwner()) {
+        el.style.display = ''; // Owner = superuser
+        return;
       }
+      const roles = el.dataset.role.split(',').map(s => s.trim());
+      el.style.display = roles.includes(userRole) ? '' : 'none';
     });
   }
 
@@ -395,6 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showPopup('loading', 'Memuat data...');
     const uid = currentUser.uid;
 
+    // Contoh listener
     const workersRef = db.collection('users').doc(uid).collection('workers');
     const workerListener = workersRef.onSnapshot(snapshot => {
       const workers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -406,19 +497,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function detachDataListeners() {
-    listeners.forEach(unsubscribe => unsubscribe && unsubscribe());
+    listeners.forEach(unsub => unsub && unsub());
     listeners = [];
   }
 
-  /* ===== Form/Modal/Monitoring Stub ===== */
+  /* ===== Form/Modal/Monitoring Stubs (isi sesuai kebutuhan) ===== */
   function initForms(){ /* ... */ }
   function initModals(){ /* ... */ }
   function initMonitoring(){ /* ... */ }
-  function populateWorkers(workers){ /* ... */ }
+  function populateWorkers(_workers){ /* ... */ }
 
   function initStokMaterialPage() {}
   function initPengaturanPage() {}
   function initTagihanPage() {}
+
   function initInstallPrompt() {
     let deferredPrompt;
     const installToast = $('#install-toast');
@@ -450,35 +542,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Sisipkan skeleton halaman agar showPage() selalu punya target
   function injectPageHTML() {
     const container = $('.page-container');
     if (!container) return;
-    // Pastikan ada page-dashboard (akses untuk Guest & semua role)
     container.innerHTML += `
-      <main id="page-dashboard" class="page active" data-role="Guest,Pending,User,Admin,Owner">
+      <main id="page-dashboard" class="page active">
         <!-- Dashboard content from index.html -->
       </main>
-      <main id="page-input-data" class="page" data-role="User,Admin,Owner">
+      <main id="page-input-data" class="page" data-role="Owner,Admin,User,Logistik,Admin Proyek,Koordinator">
         <!-- Input Data page content -->
       </main>
-      <main id="page-absensi" class="page" data-role="User,Admin,Owner">
+      <main id="page-absensi" class="page" data-role="Owner,Admin,Admin Proyek,User">
         <!-- Absensi page content -->
       </main>
-      <main id="page-stok-material" class="page" data-role="User,Admin,Owner">
+      <main id="page-stok-material" class="page" data-role="Owner,Admin,Logistik">
         <!-- Stok Material page content -->
       </main>
-      <main id="page-tagihan" class="page" data-role="User,Admin,Owner">
+      <main id="page-tagihan" class="page" data-role="Owner,Admin,Koordinator">
         <!-- Tagihan page content -->
       </main>
-      <main id="page-monitoring" class="page" data-role="User,Admin,Owner">
-        <!-- Laporan/Monitoring page content -->
+      <main id="page-monitoring" class="page">
+        <!-- Laporan/Monitoring page content (boleh untuk Pending) -->
       </main>
-      <main id="page-pengaturan" class="page" data-role="Admin,Owner">
+      <main id="page-pengaturan" class="page" data-role="Owner,Admin">
         <!-- Pengaturan page content -->
       </main>
     `;
   }
 
-  init(); // Start the application
+  // Mulai aplikasi
+  init();
 });
-</script>
