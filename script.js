@@ -1,15 +1,21 @@
+<script>
 // @ts-check
 /* =======================================================
- * PKP Frontend v5.2 - Final Build (Auth Redirect Fixed)
- * Firebase v8 (namespaced)
+ * PKP Frontend v5.2 - Final Build (Firebase Architecture)
  * ======================================================= */
 
-/* global firebase, Chart */
+/**
+ * @global {any} firebase
+ * @global {any} Chart
+ */
+
+// Define custom properties on the Window interface for TypeScript
+window.Chart = window.Chart || {};
 
 document.addEventListener('DOMContentLoaded', () => {
-  // =====================================================
-  // 1) KONFIGURASI FIREBASE
-  // =====================================================
+  // =================================================================
+  // PENTING: PASTE KONFIGURASI FIREBASE ANDA DI SINI
+  // =================================================================
   const firebaseConfig = {
     apiKey: "AIzaSyBDTURKKzmhG8hZXlBryoQRdjqd70GI18c",
     authDomain: "banflex-3e7c4.firebaseapp.com",
@@ -18,30 +24,29 @@ document.addEventListener('DOMContentLoaded', () => {
     messagingSenderId: "192219628345",
     appId: "1:192219628345:web:f1caa28230a5803e681ee8"
   };
+  // =================================================================
 
-  // =====================================================
-  // 2) INIT FIREBASE
-  // =====================================================
+  // Initialize Firebase
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   const auth = firebase.auth();
 
-  // =====================================================
-  // 3) STATE & HELPERS
-  // =====================================================
-  /** @type {any[]} */ let ITEMS = [];
-  /** @type {Chart | null} */ let dashboardChart = null;
-  /** @type {firebase.User|null} */ let currentUser = null;
-  let userRole = 'Guest';
-  /** @type {Array<() => void>} */ let listeners = [];
-  let popupTimeout;
+  /** @type {any[]} */
+  let ITEMS = [];
+  /** @type {Chart | null} */
+  let dashboardChart = null;
+  let currentUser = null;     // Holds user auth object
+  let userRole = 'Guest';     // Holds user role from Firestore
+  let listeners = [];         // To hold Firestore listeners
 
-  const $  = (s) => document.querySelector(s);
+  /* ===== Helpers ===== */
+  const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n || 0);
-  const fmtDate = (d) => { try { return new Date(d).toISOString().split('T')[0]; } catch { return ''; } };
-  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+  const num = (v) => Number(String(v || '').replace(/[^\d]/g, ''));
+  const fmtDate = (d) => { try { return new Date(d).toISOString().split('T')[0]; } catch(e) { return ''; } };
 
+  let popupTimeout, slowLoginTimer;
   function showPopup(kind, text) {
     clearTimeout(popupTimeout);
     const p = $('#popup-container');
@@ -52,81 +57,103 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!iconEl || !messageEl) return;
     iconEl.className = kind === 'loading' ? 'spinner' : 'material-symbols-outlined';
     iconEl.textContent = kind === 'success' ? 'check_circle' : (kind === 'error' ? 'cancel' : '');
-    messageEl.textContent = text || '';
+    messageEl.textContent = text;
     if (kind !== 'loading') {
       popupTimeout = setTimeout(() => p.classList.remove('show'), 4000);
     }
   }
 
-  // =====================================================
-  // 4) BOOTSTRAP APP
-  // =====================================================
-  (async function init() {
-    // Offline persistence (best-effort)
-    try { await db.enablePersistence(); }
-    catch (err) {
-      if (err && err.code === 'failed-precondition') console.warn('Persistence gagal: multi-tab.');
-      else if (err && err.code === 'unimplemented') console.warn('Browser tidak support persistence.');
+  /* ===== Firebase Initialization & Auth ===== */
+  async function init() {
+    try {
+      await db.enablePersistence();
+      console.log("Firebase Offline Persistence enabled.");
+    } catch (err) {
+      if (err.code == 'failed-precondition') {
+        console.warn("Multiple tabs open, persistence can only be enabled in one tab at a time.");
+      } else if (err.code == 'unimplemented') {
+        console.warn("The current browser does not support all of the features required to enable persistence.");
+      }
     }
 
     injectPageHTML();
     initUI();
-    initAuthBindings();   // pasang handler tombol login/logout dulu
-
-    // Ambil hasil redirect kalau flow login pakai redirect (mobile)
-    try { await auth.getRedirectResult(); }
-    catch (e) { console.warn('Redirect result error:', e); }
-
-    // Dengarkan status auth → sumber kebenaran untuk navigasi
-    initAuthState();
-
+    initAuth();
     initForms();
     initModals();
     initMonitoring();
     initInstallPrompt();
 
-    // Jangan paksa showPage di sini; tunggu auth siap di onAuthStateChanged
-  })();
+    // Saat awal buka, default ke dashboard (guest view)
+    showPage('dashboard');
+  }
 
-  // =====================================================
-  // 5) AUTH: LISTENER & HANDLERS
-  // =====================================================
-  function initAuthState() {
+  function initAuth() {
     auth.onAuthStateChanged(async (user) => {
-      // Dipanggil SELALU minimal sekali pada start
       if (user) {
         currentUser = user;
-        await checkUserRole(user);
+
+        // Tampilkan loading & langsung arahkan ke dashboard
+        showPopup('loading', 'Menyiapkan dashboard...');
+        localStorage.setItem('lastActivePage', 'dashboard');
+        showPage('dashboard');
+
+        try {
+          await checkUserRole(user);
+        } catch (e) {
+          console.warn('Gagal cek role:', e);
+          userRole = 'Pending';
+        }
+
         updateUIForUser();
         attachDataListeners();
 
-        // Tutup modal login bila terbuka & arahkan ke dashboard
+        // Tutup modal login bila masih terbuka
         $('#login-modal')?.classList.add('hidden');
-        showPage('dashboard');
+
+        if (userRole === 'Pending') {
+          // Jelaskan status pending, jangan blank
+          const pendingEmailEl = $('#pending-email');
+          if (pendingEmailEl) pendingEmailEl.textContent = user.email;
+          $('#pending-auth-modal')?.classList.remove('hidden');
+          showPopup('success', 'Login berhasil. Akun menunggu persetujuan.');
+        } else {
+          showPopup('success', 'Login berhasil. Selamat datang!');
+        }
       } else {
+        // Logged out
         currentUser = null;
         userRole = 'Guest';
         updateUIForUser();
         detachDataListeners();
         clearAllData();
 
-        // App sederhana → tetap di dashboard dengan mode Guest
+        // Saat logout, pastikan tetap di dashboard (guest)
+        localStorage.setItem('lastActivePage', 'dashboard');
         showPage('dashboard');
       }
     });
-  }
 
-  function initAuthBindings() {
     const authBtn = $('#auth-btn');
     const googleLoginBtn = $('#google-login-btn');
     const authDropdownBtn = $('#auth-dropdown-btn');
 
-    const handleLogin = () => {
-      const provider = new firebase.auth.GoogleAuthProvider();
-      const promise = isMobile
-        ? auth.signInWithRedirect(provider)  // stabil di mobile
-        : auth.signInWithPopup(provider);    // enak di desktop
-      promise.catch(err => showPopup('error', err.message));
+    const handleLogin = async () => {
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        showPopup('loading', 'Mengautentikasi...');
+        // Warning kalau login lambat
+        clearTimeout(slowLoginTimer);
+        slowLoginTimer = setTimeout(() => {
+          showPopup('error', 'Login lambat. Cek koneksi/internet atau coba ulang.');
+          // Tetap biarkan proses login berjalan di belakang
+        }, 10000);
+        await auth.signInWithPopup(provider);
+      } catch (err) {
+        showPopup('error', err?.message || 'Gagal login.');
+      } finally {
+        clearTimeout(slowLoginTimer);
+      }
     };
 
     const handleLogout = () => auth.signOut();
@@ -160,27 +187,29 @@ document.addEventListener('DOMContentLoaded', () => {
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       userRole = 'Pending';
-      const el = $('#pending-email'); if (el) el.textContent = user.email || '';
-      $('#pending-auth-modal')?.classList.remove('hidden');
     } else {
-      userRole = userDoc.data().role || 'Guest';
+      userRole = userDoc.data().role || 'Pending';
     }
   }
 
-  // =====================================================
-  // 6) UI & NAV
-  // =====================================================
+  /* ===== UI & Navigation ===== */
   function initUI() {
     const sidebar = $('#sidebar'), scrim = $('#scrim');
+    if (!sidebar || !scrim) return;
+
     const btnOpenNav = $('#btnOpenNav');
-    if (btnOpenNav) btnOpenNav.onclick = () => { sidebar?.classList.add('open'); scrim?.classList.add('show'); };
-    scrim?.addEventListener('click', () => { sidebar?.classList.remove('open'); scrim?.classList.remove('show'); });
+    if (btnOpenNav) btnOpenNav.onclick = () => { sidebar.classList.add('open'); scrim.classList.add('show'); };
+
+    scrim.onclick = () => { sidebar.classList.remove('open'); scrim.classList.remove('show'); };
 
     $$('[data-nav]').forEach(btn => {
       if (!(btn instanceof HTMLElement) || !btn.dataset.nav) return;
       btn.addEventListener('click', () => {
         showPage(btn.dataset.nav);
-        if (window.innerWidth <= 992) { sidebar?.classList.remove('open'); scrim?.classList.remove('show'); }
+        if (window.innerWidth <= 992) {
+          sidebar.classList.remove('open');
+          scrim.classList.remove('show');
+        }
       });
     });
 
@@ -189,28 +218,47 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.closest('button')) return;
         const navId = (el instanceof HTMLElement) ? el.dataset.navLink : null;
         if (navId) {
-          document.querySelector(`.nav-item[data-nav="${navId}"]`)?.dispatchEvent(new Event('click'));
+          const monitorTarget = (el instanceof HTMLElement) ? el.dataset.monitorTarget : null;
+          const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
+          if (targetNavElement instanceof HTMLElement) {
+            targetNavElement.click();
+            if (monitorTarget) {
+              setTimeout(() => {
+                const targetTab = $(`#page-monitoring .tab-btn[data-kategori="${monitorTarget}"]`);
+                if (targetTab instanceof HTMLElement) targetTab.click();
+              }, 50);
+            }
+          }
         }
       });
     });
 
     $$('[data-quick-link]').forEach(el => {
       el.addEventListener('click', () => {
-        if (!(el instanceof HTMLElement)) return;
-        const navId = el.dataset.quickLink;
-        const formTarget = el.dataset.formTarget;
-        if (!navId) return;
-        document.querySelector(`.nav-item[data-nav="${navId}"]`)?.dispatchEvent(new Event('click'));
-        if (formTarget) {
-          setTimeout(() => {
-            const targetTab = document.querySelector(`#input-type-selector .tab-btn[data-form="${formTarget}"]`);
-            if (targetTab instanceof HTMLElement) targetTab.click();
-          }, 50);
+        if (el instanceof HTMLElement) {
+          const navId = el.dataset.quickLink;
+          const formTarget = el.dataset.formTarget;
+          if (navId) {
+            const targetNavElement = $(`.nav-item[data-nav="${navId}"]`);
+            if (targetNavElement instanceof HTMLElement) {
+              targetNavElement.click();
+              if (formTarget) {
+                setTimeout(() => {
+                  const targetTab = $(`#input-type-selector .tab-btn[data-form="${formTarget}"]`);
+                  if (targetTab instanceof HTMLElement) targetTab.click();
+                }, 50);
+              }
+            }
+          }
         }
       });
     });
 
-    $('#btnRefresh')?.addEventListener('click', (e) => { e.stopPropagation(); attachDataListeners(); });
+    const btnRefresh = $('#btnRefresh');
+    if (btnRefresh) btnRefresh.onclick = (e) => {
+      e.stopPropagation();
+      attachDataListeners();
+    };
 
     const themeToggleBtn = $('#theme-toggle-btn');
     if (themeToggleBtn) {
@@ -218,32 +266,62 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('dark-theme');
         localStorage.setItem('theme', document.body.classList.contains('dark-theme') ? 'dark' : 'light');
       };
-      if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-theme');
+    }
+    if (localStorage.getItem('theme') === 'dark') {
+      document.body.classList.add('dark-theme');
+    }
+
+    const searchBtn = $('#global-search-btn');
+    const searchContainer = $('#global-search-container');
+    if (searchBtn && searchContainer) {
+      searchBtn.onclick = () => {
+        searchContainer.classList.toggle('active');
+        if (searchContainer.classList.contains('active')) {
+          $('#global-search-input')?.focus();
+        }
+      }
     }
 
     const userProfileBtn = $('#user-profile-btn');
     const userDropdown = $('#user-dropdown');
-    userProfileBtn?.addEventListener('click', (e) => { e.stopPropagation(); userDropdown?.classList.toggle('show'); });
+    if (userProfileBtn && userDropdown) {
+      userProfileBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userDropdown.classList.toggle('show');
+      });
+    }
 
     const notificationBtn = $('#notification-btn');
     const notificationDropdown = $('#notification-dropdown');
-    notificationBtn?.addEventListener('click', (e) => { e.stopPropagation(); notificationDropdown?.classList.toggle('show'); });
+    if (notificationBtn && notificationDropdown) {
+      notificationBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        notificationDropdown.classList.toggle('show');
+      });
+    }
 
     window.addEventListener('click', (e) => {
-      const t = e.target;
-      if (userDropdown && !userDropdown.contains(t) && userProfileBtn && !userProfileBtn.contains(t)) userDropdown.classList.remove('show');
-      if (notificationDropdown && !notificationDropdown.contains(t) && notificationBtn && !notificationBtn.contains(t)) notificationDropdown.classList.remove('show');
+      const target = e.target;
+      if (userDropdown && !userDropdown.contains(target) && userProfileBtn && !userProfileBtn.contains(target)) {
+        userDropdown.classList.remove('show');
+      }
+      if (notificationDropdown && !notificationDropdown.contains(target) && notificationBtn && !notificationBtn.contains(target)) {
+        notificationDropdown.classList.remove('show');
+      }
     });
   }
 
   function showPage(id) {
+    // Pastikan elemen page tersedia
     $$('.page').forEach(p => p.classList.remove('active'));
     const page = $(`#page-${id}`);
     if (page) page.classList.add('active');
+
     localStorage.setItem('lastActivePage', id);
+
     $$('.nav-item.active').forEach(el => el.classList.remove('active'));
     const navButton = $(`.nav-item[data-nav="${id}"]`);
-    navButton?.classList.add('active');
+    if (navButton) navButton.classList.add('active');
   }
 
   function updateUIForUser() {
@@ -257,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const authDropdownBtn = $('#auth-dropdown-btn');
 
     if (currentUser) {
-      const initial = (currentUser.displayName || 'U').charAt(0).toUpperCase();
+      const initial = currentUser.displayName ? currentUser.displayName.charAt(0) : 'U';
       const avatarUrl = currentUser.photoURL || `https://placehold.co/40x40/3b82f6/ffffff?text=${initial}`;
       if (userAvatar) userAvatar.src = avatarUrl;
       if (userDropdownAvatar) userDropdownAvatar.src = avatarUrl.replace('40x40', '60x60');
@@ -266,7 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (authText) authText.textContent = 'Keluar';
       if (authIcon) authIcon.textContent = 'logout';
-      authBtn?.classList.add('danger');
+      if (authBtn) authBtn.classList.add('danger');
 
       if (authDropdownBtn) {
         authDropdownBtn.innerHTML = `<span class="material-symbols-outlined">logout</span><span>Keluar</span>`;
@@ -281,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (authText) authText.textContent = 'Login';
       if (authIcon) authIcon.textContent = 'login';
-      authBtn?.classList.remove('danger');
+      if (authBtn) authBtn.classList.remove('danger');
 
       if (authDropdownBtn) {
         authDropdownBtn.innerHTML = `<span class="material-symbols-outlined">login</span><span>Login dengan Google</span>`;
@@ -289,61 +367,58 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Show/hide elemen berdasar role
+    // Sembunyikan/lihat elemen berdasarkan role
     $$('[data-role]').forEach(el => {
       if (el instanceof HTMLElement) {
-        const roles = (el.dataset.role || '').split(',').map(s => s.trim());
+        const roles = el.dataset.role.split(',').map(s => s.trim());
         el.style.display = roles.includes(userRole) ? '' : 'none';
       }
     });
   }
 
-  // =====================================================
-  // 7) DATA LISTENERS
-  // =====================================================
+  function clearAllData() {
+    $$('.kpi h3').forEach(el => el.innerHTML = rupiah(0));
+    const a = $('#dashboard-absensi-container');
+    const b = $('#recent-activity-container');
+    const c = $('#upcoming-bills-container');
+    const d = $('#bills-list-container');
+    if (a) a.innerHTML = '';
+    if (b) b.innerHTML = '';
+    if (c) c.innerHTML = '';
+    if (d) d.innerHTML = '';
+    if (dashboardChart) dashboardChart.destroy();
+  }
+
   function attachDataListeners() {
     detachDataListeners();
     if (!currentUser) return;
-    showPopup('loading', 'Memuat data…');
+    showPopup('loading', 'Memuat data...');
     const uid = currentUser.uid;
 
     const workersRef = db.collection('users').doc(uid).collection('workers');
-    const unsubWorkers = workersRef.onSnapshot(
-      (snap) => {
-        const workers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        populateWorkers(workers);
-        showPopup('success', 'Data real-time aktif.');
-      },
-      (err) => { console.error('Workers error:', err); showPopup('error', 'Gagal memuat data.'); }
-    );
-    listeners.push(unsubWorkers);
+    const workerListener = workersRef.onSnapshot(snapshot => {
+      const workers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      populateWorkers(workers);
+    }, err => console.error("Error fetching workers:", err));
+    listeners.push(workerListener);
+
+    showPopup('success', 'Data real-time aktif.');
   }
 
   function detachDataListeners() {
-    listeners.forEach(unsub => { try { unsub(); } catch {} });
+    listeners.forEach(unsubscribe => unsubscribe && unsubscribe());
     listeners = [];
   }
 
-  function clearAllData() {
-    $$('.kpi h3').forEach(el => { el.innerHTML = rupiah(0); });
-    $('#dashboard-absensi-container')?.replaceChildren();
-    $('#recent-activity-container')?.replaceChildren();
-    $('#upcoming-bills-container')?.replaceChildren();
-    $('#bills-list-container')?.replaceChildren();
-    if (dashboardChart) { try { dashboardChart.destroy(); } catch {} dashboardChart = null; }
-  }
+  /* ===== Form/Modal/Monitoring Stub ===== */
+  function initForms(){ /* ... */ }
+  function initModals(){ /* ... */ }
+  function initMonitoring(){ /* ... */ }
+  function populateWorkers(workers){ /* ... */ }
 
-  // =====================================================
-  // 8) FORMS / MODALS / MONITORING (STUB)
-  // =====================================================
-  function initForms(){ /* …isi sesuai kebutuhan… */ }
-  function initModals(){ /* …isi sesuai kebutuhan… */ }
-  function initMonitoring(){ /* …isi sesuai kebutuhan… */ }
-  function populateWorkers(workers){ /* …render daftar pekerja… */ }
-
-  // =====================================================
-  // 9) PWA INSTALL
-  // =====================================================
+  function initStokMaterialPage() {}
+  function initPengaturanPage() {}
+  function initTagihanPage() {}
   function initInstallPrompt() {
     let deferredPrompt;
     const installToast = $('#install-toast');
@@ -356,35 +431,54 @@ document.addEventListener('DOMContentLoaded', () => {
       installToast?.classList.remove('hidden');
     });
 
-    installBtn?.addEventListener('click', async () => {
+    if (installBtn) installBtn.addEventListener('click', async () => {
       installToast?.classList.add('hidden');
       if (deferredPrompt) {
         deferredPrompt.prompt();
-        await deferredPrompt.userChoice;
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response to the install prompt: ${outcome}`);
         deferredPrompt = null;
       }
     });
 
-    dismissInstallBtn?.addEventListener('click', () => installToast?.classList.add('hidden'));
-    window.addEventListener('appinstalled', () => installToast?.classList.add('hidden'));
+    if (dismissInstallBtn) dismissInstallBtn.addEventListener('click', () => {
+      installToast?.classList.add('hidden');
+    });
+
+    window.addEventListener('appinstalled', () => {
+      installToast?.classList.add('hidden');
+    });
   }
 
-  // =====================================================
-  // 10) INJECT HALAMAN (placeholder)
-  // =====================================================
   function injectPageHTML() {
     const container = $('.page-container');
     if (!container) return;
+    // Pastikan ada page-dashboard (akses untuk Guest & semua role)
     container.innerHTML += `
-      <main id="page-dashboard" class="page active">
-        <!-- Dashboard content -->
+      <main id="page-dashboard" class="page active" data-role="Guest,Pending,User,Admin,Owner">
+        <!-- Dashboard content from index.html -->
       </main>
-      <main id="page-input-data" class="page"><!-- Input Data --></main>
-      <main id="page-absensi" class="page"><!-- Absensi --></main>
-      <main id="page-stok-material" class="page"><!-- Stok Material --></main>
-      <main id="page-tagihan" class="page"><!-- Tagihan --></main>
-      <main id="page-monitoring" class="page"><!-- Monitoring --></main>
-      <main id="page-pengaturan" class="page"><!-- Pengaturan --></main>
+      <main id="page-input-data" class="page" data-role="User,Admin,Owner">
+        <!-- Input Data page content -->
+      </main>
+      <main id="page-absensi" class="page" data-role="User,Admin,Owner">
+        <!-- Absensi page content -->
+      </main>
+      <main id="page-stok-material" class="page" data-role="User,Admin,Owner">
+        <!-- Stok Material page content -->
+      </main>
+      <main id="page-tagihan" class="page" data-role="User,Admin,Owner">
+        <!-- Tagihan page content -->
+      </main>
+      <main id="page-monitoring" class="page" data-role="User,Admin,Owner">
+        <!-- Laporan/Monitoring page content -->
+      </main>
+      <main id="page-pengaturan" class="page" data-role="Admin,Owner">
+        <!-- Pengaturan page content -->
+      </main>
     `;
   }
+
+  init(); // Start the application
 });
+</script>
